@@ -8,10 +8,10 @@
     "@std/cli": "jsr:@std/cli@^1.0.28",
     "@std/path": "jsr:@std/path@^1.1.4",
     "json5": "npm:json5@^2.2.3",
-    "typebox": "npm:typebox@^1.1.1"
+    "typebox": "npm:typebox@^1.1.6"
   },
-  "name": "program_name",
-  "exports": "./name.ts",
-  "version": "1.0.0",
-  "description": "Description of the program"
+  "name": "Jorvik",
+  "exports": "",
+  "version": "0.1.0",
+  "description": "Configuration management for TypeScript apps"
 }

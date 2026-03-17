@@ -7,7 +7,7 @@
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/path@^1.1.4": "1.1.4",
     "npm:json5@^2.2.3": "2.2.3",
-    "npm:typebox@^1.1.1": "1.1.1"
+    "npm:typebox@^1.1.6": "1.1.6"
   },
   "jsr": {
     "@std/assert@1.0.18": {
@@ -41,8 +41,8 @@
       "integrity": "sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg==",
       "bin": true
     },
-    "typebox@1.1.1": {
-      "integrity": "sha512-LyVGXXUEiG7mGWQmu/aNILf4FqQPbsE528j7LatYH5hErt0OQcZPN84cyzXDSfBltP2BjkdqKAR7fxfC+fW0Eg=="
+    "typebox@1.1.6": {
+      "integrity": "sha512-O2iWCF+RboQfDqr6n83eOq0dKCjVchMWklKgdwKFeR01MGTskILHYEFi9n3lQvfuua4CtvG/EJEIg3P8H9eBcw=="
     }
   },
   "workspace": {
@@ -51,7 +51,7 @@
       "jsr:@std/cli@^1.0.28",
       "jsr:@std/path@^1.1.4",
       "npm:json5@^2.2.3",
-      "npm:typebox@^1.1.1"
+      "npm:typebox@^1.1.6"
     ]
   }
 }
