@@ -1,2 +1,1 @@
-# Jorvik
-Node and Deno configuration management
+# Jorvik: TypeScript application configuration management for Deno and Node.js
