@@ -1,12 +1,13 @@
-# Jorvik: Configuration management for your TypeScript applications
+# Jorvik 
+Configuration management for your TypeScript applications
 
-## Description
+## Overview
 
-Jorvik is a lightweight configuration management library for TypeScript applications running on Deno and Node.js. It combines the power of [TypeBox](https://github.com/sinclairzx83/typebox)-generated schemas with intuitive CLI generation and flexible file-based configuration loading. Define your configuration schema, and Jorvik handles validation, type conversion and CLI parsing.
+Jorvik is a lightweight configuration management package for TypeScript applications running on Deno and Node.js. It uses [TypeBox](https://github.com/sinclairzx83/typebox)-generated schemas to validate configurations and produce command line interfaces.  
 
-## Features
+Features:
 
-- **Type-safe configuration** - Define configurations using TypeBox schemas with full TypeScript type support
-- **CLI generation** - Automatically generate color-formatted CLI interfaces from your configuration schemas
-- **JSON5 support** - Load configuration files in JSON5 format for more flexible and readable configs
-- **Validation and type conversion** - Built-in validation pipeline with automatic type coercion and default value handling
+- **JSON5 support** - Write your configuration files in JSON5 format, designed for humans to use
+- **Type-safe configuration** - Validate configurations using TypeBox schemas, with automatic support for TypeScript type definitions
+- **CLI generation** - Automatically create formatted CLI interfaces from your configuration schemas
+- **Secrets management** - Safely manage API keys and other secrets by referencing environment variables and other secret stores
