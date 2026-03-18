@@ -13,6 +13,7 @@
   "name": "Jorvik",
   "version": "0.1.0",
   "description": "Configuration management for TypeScript apps",
+  "license": "MIT",
   "exports": {
     "./cli": "./src/cli.ts",
     "./configmgr": "./src/configmgr.ts",
