@@ -300,7 +300,7 @@ export function displayVersion(): void {
         meta.name
             ? meta.name
             : getProgramName(), 
-        meta.version ? meta.version : 'version unknown'
+        meta.version ?? 'version unknown'
     );
 }
 
@@ -373,6 +373,6 @@ export function processCommands(cliData: CliData):
     // undefined values or zero-length arrays. Pass back any config files along with the 
     // supplemental config. 
     const additionalConfig = removeEmptyProperties(configArgs);
-    const configFiles = config ? config as string[] : [];  
+    const configFiles = config as string[] ?? [];  
     return success({ configFiles, additionalConfig });
 }
