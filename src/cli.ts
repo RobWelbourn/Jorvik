@@ -268,7 +268,7 @@ export function combineSections(cliSections: CliData[]): CliData {
  * Display help text for CLI usage, aligning columns and applying formatting.
  * @param lines Columns to display, with optional formatting instructions.
  */
-export function displayHelp(lines: Line[]) {
+export function displayHelp(lines: Line[]): void {
     // For multi-column lines, calculate max width of column 1 and pad it for alignment
     const multiColumn = lines.filter(line => line.column2 !== undefined);
     let maxColumn1Width = Math.max(...multiColumn.map(line => line.column1.length));
@@ -295,7 +295,7 @@ export function displayHelp(lines: Line[]) {
 /**
  * Display the program version, which is taken from the deno.json file.
  */
-export function displayVersion() {
+export function displayVersion(): void {
     console.log(
         meta.name
             ? meta.name
