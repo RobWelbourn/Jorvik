@@ -341,13 +341,14 @@ function removeEmptyProperties(obj: TConfig): TConfig | undefined {
  * appropriate information and exits. Otherwise, returns any config files specified and additional 
  * config options obtained from the CLI.
  * @param cliData CLI data containing help text and parsing options.
- * @returns A Result object containing the config files and additional config options, or an error.
+ * @returns A Result object containing the config files and additional config options, or a string
+ * indicating an error.
  */
 export function processCommands(cliData: CliData): 
     Result<{ 
         configFiles: string[],
         additionalConfig: TConfig | undefined,
-    }, Error> 
+    }, string> 
 {
     const args = parseArgs(Deno.args, cliData.parseOptions);
     // deno-lint-ignore no-unused-vars
@@ -364,7 +365,7 @@ export function processCommands(cliData: CliData):
     }
     
     if (config && Array.isArray(config) && config.some(c => typeof c !== 'string')) {
-        return failure(new Error('Config filenames must be strings'));
+        return failure('Config filenames must be strings');
     }
         
     // Look for any supplemental configuration options from the CLI. Remove standard options 

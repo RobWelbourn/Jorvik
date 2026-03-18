@@ -228,7 +228,7 @@ Deno.test('processCommands: returns failure for non-string config entries', () =
 		const result = processCommands(cliData);
 		assertEquals(result.success, false);
 		if (!result.success) {
-			assertEquals(result.error.message, 'Config filenames must be strings');
+			assertEquals(result.error, 'Config filenames must be strings');
 		}
 	});
 });
