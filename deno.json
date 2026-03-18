@@ -19,5 +19,11 @@
     "./configmgr": "./src/configmgr.ts",
     "./result": "./src/result.ts",
     "./typeboxhelpers": "./src/typeboxhelpers.ts"
+  },
+  "fmt": {
+    "indentWidth": 4,
+    "lineWidth": 120,
+    "useTabs": false,
+    "singleQuote": true
   }
 }

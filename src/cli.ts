@@ -1,5 +1,5 @@
 /**
- * @fileoverview Functions for creating a CLI from a TypeBox schema.  Standard options for help, version and 
+ * @fileoverview Functions for creating a CLI from a TypeBox schema.  Standard options for help, version and
  * config file names are included, and additional options are created from the 'title' and 'description' metadata
  * in the schema.  The CLI is displayed with aligned columns and color formatting.
  */
@@ -7,12 +7,12 @@ import meta from '../deno.json' with { type: 'json' };
 import * as path from '@std/path';
 import { parseArgs } from '@std/cli';
 import type * as typebox from 'typebox';
-import { type Result, success, failure } from './result.ts';
-import type { TConfig } from "./configmgr.ts";
+import { type Result, failure, success } from './result.ts';
+import type { TConfig } from './configmgr.ts';
 
 /**
  * Simplified version of TypeBox's TSchema, containing only fields relevant for CLI generation.
- */ 
+ */
 type TSchema = {
     type: 'object' | 'array' | 'string' | 'number' | 'boolean';
     properties?: { [key: string]: TSchema };
@@ -24,7 +24,7 @@ type TSchema = {
 };
 
 const MAX_COLUMN1_WIDTH = 35; // Max width for the first column in CLI help display
-const CLI_REVERT = 'display: revert';  // CSS to revert to default formatting after applying custom style
+const CLI_REVERT = 'display: revert'; // CSS to revert to default formatting after applying custom style
 const CLI_SECTION_FMT = 'color: yellow';
 const CLI_OPTION_FMT = 'color: green';
 const CLI_VALUE_FMT = 'color: cyan; font-weight: bold';
@@ -32,15 +32,15 @@ const CLI_USAGE_FMT = 'color: gray';
 
 /**
  * Line content and format for CLI help display. Either one or two columns are supported.
- * The format consists of one or more CSS style strings to apply to the line when displayed. 
- * There should be one format string for each CSS placeholder (%c) in the line content. 
+ * The format consists of one or more CSS style strings to apply to the line when displayed.
+ * There should be one format string for each CSS placeholder (%c) in the line content.
  * @see https://docs.deno.com/examples/color_logging/
  */
 export type Line = {
     column1: string;
     column2?: string;
     format?: string | string[];
-}
+};
 
 /**
  * Data structure returned by compileCli, containing lines to display and options for parsing CLI arguments.
@@ -48,19 +48,19 @@ export type Line = {
 export type CliData = {
     lines: Line[];
     parseOptions?: ParseOptions;
-}
+};
 
 /**
  * Compatible subset of CLI ParseOptions.
  */
 export type ParseOptions = {
-    boolean: string[],   // array of boolean options; not used
-    negatable: string[], // array of boolean options that can be negated with --no- prefix
-    string: string[],    // array of string and numeric options; not used 
-    collect: string[],   // array of options of which there can be multiple instances 
-    default: { [key: string]: string | number | boolean },  // options with default values; not used
-    alias: { [key: string]: string },  // option aliases
-}
+    boolean: string[]; // array of boolean options; not used
+    negatable: string[]; // array of boolean options that can be negated with --no- prefix
+    string: string[]; // array of string and numeric options; not used
+    collect: string[]; // array of options of which there can be multiple instances
+    default: { [key: string]: string | number | boolean }; // options with default values; not used
+    alias: { [key: string]: string }; // option aliases
+};
 
 /**
  * Utility function to get the short form of the program entry point.
@@ -71,21 +71,21 @@ function getProgramName() {
 }
 
 /**
- * Traverses the provided TypeBox schema and compiles CLI help text and parsing options 
+ * Traverses the provided TypeBox schema and compiles CLI help text and parsing options
  * based on the schema's properties and their descriptions.
  * @param section The section name to prefix CLI options with (e.g. 'status' for --status.enabled).
- * If the section is empty or undefined, options will be top-level (e.g. --enabled). 
+ * If the section is empty or undefined, options will be top-level (e.g. --enabled).
  * @param schema The schema.
  * @returns The compiled CLI data.
  */
 export function compileSection(section: string | undefined, schema: typebox.TSchema): CliData {
     const lines: Line[] = [];
-    const parseOptions: ParseOptions = {  
+    const parseOptions: ParseOptions = {
         boolean: [],
         negatable: [],
-        string: [],  
-        collect: [],  
-        default: {}, 
+        string: [],
+        collect: [],
+        default: {},
         alias: {},
     };
 
@@ -130,23 +130,23 @@ export function compileSection(section: string | undefined, schema: typebox.TSch
         lines.push({ column1, column2, format });
     }
 
-    // Helper function that recursively traverses the schema, 
+    // Helper function that recursively traverses the schema,
     // looking for properties with descriptions.
     function traverseSchema(section: string | undefined, schema: TSchema) {
         if (schema.properties) {
             for (const [key, prop] of Object.entries(schema.properties)) {
                 if (prop.title) {
-                    lines.push({ 
-                        column1: '\n%c' + prop.title, 
-                        format: CLI_SECTION_FMT 
+                    lines.push({
+                        column1: '\n%c' + prop.title,
+                        format: CLI_SECTION_FMT,
                     });
                 }
 
                 const nextSection = section ? `${section}.${key}` : key;
-                if (prop.items) {  // 'items' indicates an array
+                if (prop.items) { // 'items' indicates an array
                     if (prop.items.description) {
                         annotateOption(nextSection, prop.items);
-                        parseOptions.collect.push(nextSection);  // multiple values allowed
+                        parseOptions.collect.push(nextSection); // multiple values allowed
                     }
                     traverseSchema(nextSection, prop.items);
                 } else {
@@ -159,7 +159,7 @@ export function compileSection(section: string | undefined, schema: typebox.TSch
         }
     }
 
-    traverseSchema(section, schema as unknown as TSchema);  // Coerce to our simplified TSchema type
+    traverseSchema(section, schema as unknown as TSchema); // Coerce to our simplified TSchema type
     return { lines, parseOptions };
 }
 
@@ -172,7 +172,7 @@ export function getStandardOptions(): CliData {
         boolean: ['help', 'version'],
         negatable: [],
         string: ['config', 'c'],
-        collect: ['config', 'c'],  
+        collect: ['config', 'c'],
         default: {},
         alias: { help: 'h', version: 'v', config: 'c' },
     };
@@ -196,9 +196,9 @@ export function getStandardOptions(): CliData {
             column1: '  %c--config, -c',
             column2: '%cConfiguration file(s) (default: %c./config/default.json5%c, %c./config/local.json5%c)',
             format: [
-                CLI_OPTION_FMT, CLI_REVERT, 
-                CLI_VALUE_FMT, CLI_REVERT, 
-                CLI_VALUE_FMT, CLI_REVERT
+                CLI_OPTION_FMT, CLI_REVERT,
+                CLI_VALUE_FMT, CLI_REVERT,
+                CLI_VALUE_FMT, CLI_REVERT,
             ],
         },
     ];
@@ -216,12 +216,12 @@ export function getStandardOptions(): CliData {
 export function createIntro(intro?: string, usage?: string): CliData {
     const lines = [
         {
-            column1: intro
-                ? intro
-                : meta.description
-                    ? meta.description
-                    : meta.name
-                        ? meta.name
+            column1: intro 
+                ? intro 
+                : meta.description 
+                    ? meta.description 
+                    : meta.name 
+                        ? meta.name 
                         : getProgramName(),
         },
         {
@@ -229,7 +229,7 @@ export function createIntro(intro?: string, usage?: string): CliData {
                 ? `\n%cUsage: %c${usage}` 
                 : `\n%cUsage: %cdeno ${getProgramName()} [OPTIONS]`,
             format: [CLI_USAGE_FMT, CLI_REVERT],
-        }
+        },
     ];
     return { lines };
 }
@@ -241,12 +241,12 @@ export function createIntro(intro?: string, usage?: string): CliData {
  */
 export function combineSections(cliSections: CliData[]): CliData {
     const lines: Line[] = [];
-    const parseOptions: ParseOptions = {  
+    const parseOptions: ParseOptions = {
         boolean: [],
         negatable: [],
-        string: [],  
-        collect: [],  
-        default: {}, 
+        string: [],
+        collect: [],
+        default: {},
         alias: {},
     };
 
@@ -270,15 +270,15 @@ export function combineSections(cliSections: CliData[]): CliData {
  */
 export function displayHelp(lines: Line[]): void {
     // For multi-column lines, calculate max width of column 1 and pad it for alignment
-    const multiColumn = lines.filter(line => line.column2 !== undefined);
-    let maxColumn1Width = Math.max(...multiColumn.map(line => line.column1.length));
+    const multiColumn = lines.filter((line) => line.column2 !== undefined);
+    let maxColumn1Width = Math.max(...multiColumn.map((line) => line.column1.length));
     if (maxColumn1Width > MAX_COLUMN1_WIDTH) {
         maxColumn1Width = MAX_COLUMN1_WIDTH;
     }
 
     for (const line of lines) {
         const theLine = line.column2 
-            ? line.column1.padEnd(maxColumn1Width + 2) + line.column2
+            ? line.column1.padEnd(maxColumn1Width + 2) + line.column2 
             : line.column1;
         if (line.format) {
             if (Array.isArray(line.format)) {
@@ -297,10 +297,8 @@ export function displayHelp(lines: Line[]): void {
  */
 export function displayVersion(): void {
     console.log(
-        meta.name
-            ? meta.name
-            : getProgramName(), 
-        meta.version ?? 'version unknown'
+        meta.name ? meta.name : getProgramName(),
+        meta.version ?? 'version unknown',
     );
 }
 
@@ -336,20 +334,18 @@ function removeEmptyProperties(obj: TConfig): TConfig | undefined {
 }
 
 /**
- * Processes CLI commands, looking for standard options (help, version, config file names) and 
- * additional config options from the command line, If help or version is requested, displays the 
- * appropriate information and exits. Otherwise, returns any config files specified and additional 
+ * Processes CLI commands, looking for standard options (help, version, config file names) and
+ * additional config options from the command line, If help or version is requested, displays the
+ * appropriate information and exits. Otherwise, returns any config files specified and additional
  * config options obtained from the CLI.
  * @param cliData CLI data containing help text and parsing options.
  * @returns A Result object containing the config files and additional config options, or a string
  * indicating an error.
  */
-export function processCommands(cliData: CliData): 
-    Result<{ 
-        configFiles: string[],
-        additionalConfig: TConfig | undefined,
-    }, string> 
-{
+export function processCommands(cliData: CliData): Result<{
+    configFiles: string[];
+    additionalConfig: TConfig | undefined;
+}, string> {
     const args = parseArgs(Deno.args, cliData.parseOptions);
     // deno-lint-ignore no-unused-vars
     const { _, help, h, version, v, config, c, ...configArgs } = args;
@@ -363,16 +359,16 @@ export function processCommands(cliData: CliData):
         displayHelp(cliData.lines);
         Deno.exit(0);
     }
-    
-    if (config && Array.isArray(config) && config.some(c => typeof c !== 'string')) {
+
+    if (config && Array.isArray(config) && config.some((c) => typeof c !== 'string')) {
         return failure('Config filenames must be strings');
     }
-        
-    // Look for any supplemental configuration options from the CLI. Remove standard options 
-    // from the args object, leaving only those from the config schema. Remove any options with 
-    // undefined values or zero-length arrays. Pass back any config files along with the 
-    // supplemental config. 
+
+    // Look for any supplemental configuration options from the CLI. Remove standard options
+    // from the args object, leaving only those from the config schema. Remove any options with
+    // undefined values or zero-length arrays. Pass back any config files along with the
+    // supplemental config.
     const additionalConfig = removeEmptyProperties(configArgs);
-    const configFiles = config as string[] ?? [];  
+    const configFiles = config as string[] ?? [];
     return success({ configFiles, additionalConfig });
 }
