@@ -11,7 +11,12 @@
     "typebox": "npm:typebox@^1.1.6"
   },
   "name": "Jorvik",
-
   "version": "0.1.0",
-  "description": "Configuration management for TypeScript apps"
+  "description": "Configuration management for TypeScript apps",
+  "exports": {
+    "./cli": "./src/cli.ts",
+    "./configmgr": "./src/configmgr.ts",
+    "./result": "./src/result.ts",
+    "./typeboxhelpers": "./src/typeboxhelpers.ts"
+  }
 }
