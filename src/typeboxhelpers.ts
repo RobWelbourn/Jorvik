@@ -1,5 +1,5 @@
 /**
- * @fileoverview Helper functions for working with TypeBox schemas and values.  
+ * @fileoverview Helper functions for working with TypeBox schemas and values.
  * Note: Requires TypeBox 1.1 or later for the customParse function to work correctly, due to
  * breaking changes in the Parse function.
  */
@@ -11,7 +11,7 @@ const parsePipeline = Pipeline([
     (context, schema, value) => Value.Default(context, schema, value),
     (context, schema, value) => Value.Convert(context, schema, value),
     // (context, schema, value) => Value.Clean(context, schema, value),
-    (context, schema, value) => Value.Parse(context, schema, value)
+    (context, schema, value) => Value.Parse(context, schema, value),
 ]);
 
 /**
@@ -20,7 +20,7 @@ const parsePipeline = Pipeline([
  * 2. Default: Applies default values from the schema to the input value.
  * 3. Convert: Converts the input value to match the types defined in the schema.
  * 4. Parse: Validates and parses the input value according to the schema.
- * Most notably, the pipeline omits the Clean step that removes additional properties not defined 
+ * Most notably, the pipeline omits the Clean step that removes additional properties not defined
  * in the schema, so that they can be caught by the Parse step and reported as errors.
  * @param schema The TypeBox schema.
  * @param value The value to parse.
@@ -42,8 +42,8 @@ export function formatParseError(section: string | undefined, err: ParseError): 
     function normalizePath(path: string): string {
         return path
             .replaceAll('/', '.')
-            .replace(/^\./, '')  // Remove leading dot if present
-            .replaceAll(/\.(\d+)/g, '[$1]');  // Convert .0, .1, etc. to [0], [1], etc.
+            .replace(/^\./, '') // Remove leading dot if present
+            .replaceAll(/\.(\d+)/g, '[$1]'); // Convert .0, .1, etc. to [0], [1], etc.
     }
 
     // console.log('ParseError:', err.cause);
@@ -51,22 +51,22 @@ export function formatParseError(section: string | undefined, err: ParseError): 
     const messages = [];
 
     // Find all discriminated union errors.
-    const unionErrors = errors.filter(e => e.keyword === 'anyOf');
+    const unionErrors = errors.filter((e) => e.keyword === 'anyOf');
     for (const unionError of unionErrors) {
         // Group the errors by their instancePath.
-        const group = errors.filter(e => e.instancePath.startsWith(unionError.instancePath));
+        const group = errors.filter((e) => e.instancePath.startsWith(unionError.instancePath));
         const path = normalizePath((section ?? '') + unionError.instancePath);
 
         // Check for common types of error.  If it's not one of these, we will assume
         // it's an invalid value of the union discriminator, and display the allowed values.
-        const additionalPropsErrors = group.filter(e => e.keyword === 'additionalProperties');  // Extra properties
-        const requiredErrors = group.filter(e => e.keyword === 'required');  // Missing properties
-        const typeErrors = group.filter(e => e.keyword === 'type');  // Type mismatches
-        const formatErrors = group.filter(e => e.keyword === 'format');  // Format errors 
-        const enumErrors = group.filter(e => e.keyword === 'enum');  // Invalid enum values
-        const minLengthErrors = group.filter(e => e.keyword === 'minLength');  // String too short
-        const maxLengthErrors = group.filter(e => e.keyword === 'maxLength');  // String too long
-        
+        const additionalPropsErrors = group.filter((e) => e.keyword === 'additionalProperties'); // Extra properties
+        const requiredErrors = group.filter((e) => e.keyword === 'required'); // Missing properties
+        const typeErrors = group.filter((e) => e.keyword === 'type'); // Type mismatches
+        const formatErrors = group.filter((e) => e.keyword === 'format'); // Format errors
+        const enumErrors = group.filter((e) => e.keyword === 'enum'); // Invalid enum values
+        const minLengthErrors = group.filter((e) => e.keyword === 'minLength'); // String too short
+        const maxLengthErrors = group.filter((e) => e.keyword === 'maxLength'); // String too long
+
         // The order in which we check for types of error is important; additionalProperties errors are
         // the penultimate, because they can mask other errors, and checking for type discriminator errors
         // is the last.
@@ -77,23 +77,23 @@ export function formatParseError(section: string | undefined, err: ParseError): 
                 : formatErrors.length > 0
                     ? formatErrors[0].message
                     : enumErrors.length > 0
-                        ? enumErrors[0].message + ': ' 
+                        ? enumErrors[0].message + ': '
                             + enumErrors[0].params.allowedValues.join(', ')
-                        : minLengthErrors.length > 0                                
+                        : minLengthErrors.length > 0
                             ? minLengthErrors[0].message
                             : maxLengthErrors.length > 0
                                 ? maxLengthErrors[0].message
                                 : additionalPropsErrors.length > 0
-                                    ? additionalPropsErrors[0].message + ': ' 
+                                    ? additionalPropsErrors[0].message + ': '
                                         + additionalPropsErrors[0].params.additionalProperties.join(', ')
                                     : group
-                                        .filter(e => e.keyword === 'const')
-                                        .map(e => e.params.allowedValue ?? '')
+                                        .filter((e) => e.keyword === 'const')
+                                        .map((e) => e.params.allowedValue ?? '')
                                         .join(', ');
         messages.push(path ? `${path} ${message}` : message);
 
         // Remove the grouped errors from the main errors array to avoid duplicate messages.
-        errors = errors.filter(e => !group.includes(e));
+        errors = errors.filter((e) => !group.includes(e));
     }
 
     // Handle other kinds of error.
