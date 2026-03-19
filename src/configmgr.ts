@@ -96,8 +96,14 @@ export type TConfig = { [key: string]: TConfigElement };
  * - OS keychains
  * - Environment variable replacers that read from the local process environment.
  */
-interface Replacer {
-    replace: (value: string) => Promise<string>;
+export interface Replacer {
+    /**
+     * Replace an environment variable placeholder with its actual value. 
+     * @param variableName The variable name.
+     * @returns The value of the environment variable.
+     * @throws Error if the environment variable is not defined or cannot be accessed.
+     */
+    replace: (variableName: string) => Promise<string>;
 }
 
 /**
@@ -105,84 +111,20 @@ interface Replacer {
  * with their actual values from the local process environment.
  */
 class EnvVariableReplacer implements Replacer {
-    private errors: string[];  // Taken from the containing Config instance.
-
-    constructor(errors: string[]) {
-        this.errors = errors;
-    }
-
     /**
-     * Replaces environment variable placeholders in a string value with their actual values.  Env vars are
-     * indicated by a leading '$' character. If the environment variable is not set, a warning is logged and 
-     * the original value is returned.  If the value starts with '$$', it is treated as an escaped '$' character 
-     * and the leading '$' is removed.
-     * @param value Configuration value to test and replace.
-     * @returns The replaced value if found, otherwise the original value.
+     * Replaces environment variable placeholders in a string value with their actual values.  If the 
+     * environment variable is not defined, an error is thrown.  
+     * @param variableName Name of the environment variable.
+     * @returns The replaced value, if found.
+     * @throws Error if the environment variable is not defined.
      */
-    replace(value: string): Promise<string> {
-        let result = value;
-        if (value.startsWith('$')) {
-            const envVarName = value.slice(1);
-            if (envVarName.startsWith('$')) {  // Handle escaped '$' character
-                result = value.slice(1);
-            } else {
-                const envValue = Deno.env.get(envVarName);
-                if (!envValue) {
-                    this.errors.push(`Environment variable ${envVarName} is not defined`);
-                }
-                result = envValue || value;
-            }
+    replace(variableName: string): Promise<string> {
+        const result = Deno.env.get(variableName);
+        if (!result) {
+            throw new Error(`Environment variable ${variableName} is not defined`);
         }
         return Promise.resolve(result);
     }
-}
-
-/**
- * Do a deep merge of two configuration objects. The source object will overwrite any existing 
- * values in the target object, but if both values are non-array, non-null objects, they will be 
- * merged recursively instead of being overwritten.  Note that arrays are replaced rather than 
- * concatenated.
- * @param target The target configuration object to merge into.
- * @param source The source configuration object to merge from.
- * @returns A new configuration object that is the result of merging the source into the target.
- */
-function deepMerge<TConfigElement>(target: TConfigElement, source: TConfigElement): TConfigElement {
-    const isObject = (item: unknown) => item !== null && typeof item === 'object' && !Array.isArray(item);
-    const merged = structuredClone(target);
-
-    if (isObject(target) && isObject(source)) {
-        for (const key in source) {
-            merged[key] = isObject(merged[key]) && isObject(source[key]) 
-                ? deepMerge(merged[key], source[key])
-                : structuredClone(source[key]);
-        }
-    }
-    return merged;
-}
-
-/**
- * Replaces string values in a configuration object using a provided replacer function. The function will
- * typically be used to replace environment variable placeholders in the configuration with their actual values.
- * In the general case, we may be using a cloud-based secrets manager, so the replacer function is async and 
- * returns a Promise. 
- * @param config The configuration object.
- * @param replacer The replacer function that takes a string value and returns a Promise that resolves to the 
- * replaced string value.
- * @returns The updated configuration object.
- */
-async function deepReplace(config: TConfigElement, replacer: Replacer): Promise<TConfigElement> {
-    if (typeof config === 'string') {
-        config = await replacer.replace(config);
-    } else if (Array.isArray(config)) {
-        for (let index = 0; index < config.length; index++) {
-            config[index] = await deepReplace(config[index], replacer);
-        }
-    } else if (config !== null && typeof config === 'object') {
-        for (const key in config) {
-            config[key] = await deepReplace(config[key], replacer);
-        }
-    }
-    return config;
 }
 
 /**
@@ -197,16 +139,21 @@ export class ConfigManager {
     private supplementalConfigs: TConfig[] = []; // Added after constructor, but before load() is called.
     private mergedConfig: TConfig = {};
     private errors: string[] = [];
-    private replacer = new EnvVariableReplacer(this.errors);
+    private replacer = new EnvVariableReplacer();
 
     /**
      * Constructor. Takes a single file name or an array of file names to load and process as the configuration. 
      * The files will be loaded in the order they are provided, and later files will overwrite values from earlier 
      * files when there are conflicts.
      * @param files The file name or names to load.
+     * @param replacer Replacer object that will get the values of secrets; defaults to a standard Replacer that
+     * gets values from local environment variables.
      */
-    constructor(files: string | string[] = []) {
+    constructor(files: string | string[] = [], replacer?: Replacer) {
         this.files = Array.isArray(files) ? files : [files];
+        if (replacer) {
+            this.replacer = replacer;
+        }
     }
 
     /**
@@ -215,6 +162,68 @@ export class ConfigManager {
      */
     addConfig(config: TConfig): void {
         this.supplementalConfigs.push(config);
+    }
+
+    /**
+     * Do a deep merge of two configuration objects. The source object will overwrite any existing 
+     * values in the target object, but if both values are non-array, non-null objects, they will be 
+     * merged recursively instead of being overwritten.  Note that arrays are replaced rather than 
+     * concatenated.
+     * @param target The target configuration object to merge into.
+     * @param source The source configuration object to merge from.
+     * @returns A new configuration object that is the result of merging the source into the target.
+     */
+    private deepMerge<TConfigElement>(target: TConfigElement, source: TConfigElement): TConfigElement {
+        const isObject = (item: unknown) => item !== null && typeof item === 'object' && !Array.isArray(item);
+        const merged = structuredClone(target);
+
+        if (isObject(target) && isObject(source)) {
+            for (const key in source) {
+                merged[key] = isObject(merged[key]) && isObject(source[key]) 
+                    ? this.deepMerge(merged[key], source[key])
+                    : structuredClone(source[key]);
+            }
+        }
+        return merged;
+    }
+
+    /**
+     * Replaces environment variable placeholders in a configuration object using a provided replacer function. 
+     * The function will typically be used to replace environment variable placeholders in the configuration 
+     * with their actual values.  In the general case, we may be using a cloud-based secrets manager, so the 
+     * replacer function is async and returns a Promise. 
+     * @param config The configuration object.
+     * @param replacer The replacer function.
+     * @returns The updated configuration object.
+     */
+    private async deepReplace(config: TConfigElement): Promise<TConfigElement> {
+        if (typeof config === 'string') {
+            // Is this an environment variable?
+            if (config.startsWith('$')) { 
+                const variableName = config.slice(1);
+                if (variableName.startsWith('$')) {
+                    // Escaped dollar sign, so return the string with one dollar sign.
+                    return config.slice(1);
+                }
+                try {
+                    return await this.replacer.replace(variableName);
+                } catch (err) {
+                    this.errors.push(err instanceof Error ? err.message : String(err));
+                    return config;  // Return the original string if replacement fails, so that the error can be reported later.
+                }
+            }
+            return config;
+        } else if (Array.isArray(config)) {
+            for (let index = 0; index < config.length; index++) {
+                config[index] = await this.deepReplace(config[index]);
+
+            }
+        } else if (config !== null && typeof config === 'object') {
+            for (const key in config) {
+                config[key] = await this.deepReplace(config[key]);
+            }
+        }
+        return config;
     }
 
     /**
@@ -254,8 +263,8 @@ export class ConfigManager {
         this.configs.push(...this.supplementalConfigs);
 
         if (this.configs.length > 0) {
-            this.mergedConfig = this.configs.reduce(deepMerge);
-            this.mergedConfig = await deepReplace(this.mergedConfig, this.replacer) as TConfig;
+            this.mergedConfig = this.configs.reduce((target, source) => this.deepMerge(target, source));
+            this.mergedConfig = await this.deepReplace(this.mergedConfig) as TConfig;
         }
 
         if (this.hasErrors()) {

@@ -6,6 +6,24 @@ import { assertEquals, assertExists, assert } from '@std/assert';
 import { ConfigManager } from '../src/configmgr.ts';
 import { Type } from 'typebox';
 
+class MockReplacer {
+    calls: string[] = [];
+    values = new Map<string, string>();
+    error?: string;
+
+    replace(variableName: string): Promise<string> {
+        this.calls.push(variableName);
+        if (this.error) {
+            throw new Error(this.error);
+        }
+        const value = this.values.get(variableName);
+        if (!value) {
+            throw new Error(`No mock value for ${variableName}`);
+        }
+        return Promise.resolve(value);
+    }
+}
+
 // Setup and teardown helpers
 async function createTestConfigDir(): Promise<void> {
     const configDir = Deno.cwd() + '/config';
@@ -414,6 +432,71 @@ Deno.test('ConfigManager: constructor with string vs array', async () => {
         assertExists(cfg2);
     } finally {
         await deleteTestConfig('constructtest.json5');
+    }
+});
+
+Deno.test('ConfigManager: constructor uses provided Replacer for variable substitution', async () => {
+    await createTestConfigDir();
+    const testConfig = { database: { host: '$CUSTOM_DB_HOST', port: 5432 } };
+    await writeTestConfig('custom-replacer.json5', JSON.stringify(testConfig));
+
+    const replacer = new MockReplacer();
+    replacer.values.set('CUSTOM_DB_HOST', 'replaced-by-mock');
+
+    try {
+        const config = new ConfigManager('custom-replacer.json5', replacer);
+        await config.load();
+        assertEquals(config.hasErrors(), false);
+
+        const cfg = config.getConfig() as typeof testConfig;
+        assertEquals(cfg.database.host, 'replaced-by-mock');
+        assertEquals(cfg.database.port, 5432);
+        assertEquals(replacer.calls, ['CUSTOM_DB_HOST']);
+    } finally {
+        await deleteTestConfig('custom-replacer.json5');
+    }
+});
+
+Deno.test('ConfigManager: constructor reports errors from provided Replacer', async () => {
+    await createTestConfigDir();
+    const testConfig = { secret: '$API_KEY' };
+    await writeTestConfig('custom-replacer-error.json5', JSON.stringify(testConfig));
+
+    const replacer = new MockReplacer();
+    replacer.error = 'mock replacer failure';
+
+    try {
+        const config = new ConfigManager('custom-replacer-error.json5', replacer);
+        await config.load();
+        assertEquals(config.hasErrors(), true);
+        assert(config.getErrors().includes('mock replacer failure'));
+
+        const cfg = config.getConfig() as typeof testConfig;
+        // Original value should be preserved when replacement fails.
+        assertEquals(cfg.secret, '$API_KEY');
+        assertEquals(replacer.calls, ['API_KEY']);
+    } finally {
+        await deleteTestConfig('custom-replacer-error.json5');
+    }
+});
+
+Deno.test('ConfigManager: constructor Replacer is not called for plain strings', async () => {
+    await createTestConfigDir();
+    const testConfig = { host: 'literal-host' };
+    await writeTestConfig('custom-replacer-literal.json5', JSON.stringify(testConfig));
+
+    const replacer = new MockReplacer();
+
+    try {
+        const config = new ConfigManager('custom-replacer-literal.json5', replacer);
+        await config.load();
+        assertEquals(config.hasErrors(), false);
+
+        const cfg = config.getConfig() as typeof testConfig;
+        assertEquals(cfg.host, 'literal-host');
+        assertEquals(replacer.calls.length, 0);
+    } finally {
+        await deleteTestConfig('custom-replacer-literal.json5');
     }
 });
 
