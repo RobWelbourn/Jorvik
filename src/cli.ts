@@ -226,7 +226,7 @@ export function getStandardOptions(): CliData {
         },
         {
             column1: '  %c--config, -c',
-            column2: '%cConfiguration file(s) (default: %c./config/default.json5%c, %c./config/local.json5%c)',
+            column2: '%cConfig file(s) (default: %c./config/default.json5%c, %c./config/local.json5%c)',
             format: [
                 palette.option, palette.default,
                 palette.value, palette.default,
