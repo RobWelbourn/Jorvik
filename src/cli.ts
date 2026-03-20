@@ -24,11 +24,43 @@ type TSchema = {
 };
 
 const MAX_COLUMN1_WIDTH = 35; // Max width for the first column in CLI help display
-const CLI_REVERT = 'display: revert'; // CSS to revert to default formatting after applying custom style
-const CLI_SECTION_FMT = 'color: yellow';
-const CLI_OPTION_FMT = 'color: green';
-const CLI_VALUE_FMT = 'color: cyan; font-weight: bold';
-const CLI_USAGE_FMT = 'color: gray';
+
+/**
+ * Color palette for displaying the CLI help text. Colors are defined as CSS strings that can be applied to
+ * console.log statements.  The palette includes colors for different types of text, such as section headers,
+ * option names, option values and usage instructions.
+ */
+export type Palette = {
+    default: string; // Default color for regular text (black or light-gray, depending on terminal background)
+    section: string; // Color for section headers
+    option: string; // Color for option names
+    value: string; // Color for option values
+    usage: string; // Color for usage instructions
+};
+
+const palette: Palette = {
+    default: 'display: revert',
+    section: 'color: yellow',
+    option: 'color: green',
+    value: 'color: cyan; font-weight: bold',
+    usage: 'color: gray',
+};
+
+/** 
+ * Gets a copy of the current CLI color palette.
+ * @returns The palette.
+ */
+export function getPalette(): Palette {
+    return structuredClone(palette);
+}
+
+/**
+ * Sets elements of the CLI color palette.
+ * @param replacements The palette elements to replace.
+ */
+export function setPalette(replacements: Partial<Palette>): void {
+    Object.assign(palette, replacements);
+}
 
 /**
  * Line content and format for CLI help display. Either one or two columns are supported.
@@ -103,7 +135,7 @@ export function compileSection(section: string | undefined, schema: typebox.TSch
         }
 
         const column1 = `  %c--${option}`;
-        const format = [CLI_OPTION_FMT, CLI_REVERT];
+        const format = [palette.option, palette.default];
         let suffix = '';
 
         // Must check for false value of prop.default, to distinguish from absence of a value
@@ -114,13 +146,13 @@ export function compileSection(section: string | undefined, schema: typebox.TSch
                 suffix += 'options: %c';
                 suffix += prop.enum.join(' ');
                 suffix += '%c';
-                format.push(CLI_VALUE_FMT, CLI_REVERT);
+                format.push(palette.value, palette.default);
             }
 
             if (prop.default || prop.default === false) {
                 suffix += prop.enum ? '; default: %c' : 'default: %c';
                 suffix += `${prop.default}%c`;
-                format.push(CLI_VALUE_FMT, CLI_REVERT);
+                format.push(palette.value, palette.default);
             }
 
             suffix += ')';
@@ -138,7 +170,7 @@ export function compileSection(section: string | undefined, schema: typebox.TSch
                 if (prop.title) {
                     lines.push({
                         column1: '\n%c' + prop.title,
-                        format: CLI_SECTION_FMT,
+                        format: [palette.section],
                     });
                 }
 
@@ -180,25 +212,25 @@ export function getStandardOptions(): CliData {
     const lines = [
         {
             column1: '\n%cStandard options',
-            format: CLI_SECTION_FMT,
+            format: [palette.section],
         },
         {
             column1: '  %c--version, -v',
             column2: '%cDisplay version and exit',
-            format: [CLI_OPTION_FMT, CLI_REVERT],
+            format: [palette.option, palette.default],
         },
         {
             column1: '  %c--help, -h',
             column2: '%cDisplay this help message and exit',
-            format: [CLI_OPTION_FMT, CLI_REVERT],
+            format: [palette.option, palette.default],
         },
         {
             column1: '  %c--config, -c',
             column2: '%cConfiguration file(s) (default: %c./config/default.json5%c, %c./config/local.json5%c)',
             format: [
-                CLI_OPTION_FMT, CLI_REVERT,
-                CLI_VALUE_FMT, CLI_REVERT,
-                CLI_VALUE_FMT, CLI_REVERT,
+                palette.option, palette.default,
+                palette.value, palette.default,
+                palette.value, palette.default,
             ],
         },
     ];
@@ -228,7 +260,7 @@ export function createIntro(intro?: string, usage?: string): CliData {
             column1: usage 
                 ? `\n%cUsage: %c${usage}` 
                 : `\n%cUsage: %cdeno ${getProgramName()} [OPTIONS]`,
-            format: [CLI_USAGE_FMT, CLI_REVERT],
+            format: [palette.usage, palette.default],
         },
     ];
     return { lines };
@@ -347,6 +379,8 @@ export function processCommands(cliData: CliData): Result<{
     additionalConfig: TConfig | undefined;
 }, string> {
     const args = parseArgs(Deno.args, cliData.parseOptions);
+
+    // Remove standard options from the args object, leaving only those from the config schema. 
     // deno-lint-ignore no-unused-vars
     const { _, help, h, version, v, config, c, ...configArgs } = args;
 
@@ -364,8 +398,7 @@ export function processCommands(cliData: CliData): Result<{
         return failure('Config filenames must be strings');
     }
 
-    // Look for any supplemental configuration options from the CLI. Remove standard options
-    // from the args object, leaving only those from the config schema. Remove any options with
+    // Look for any supplemental configuration options from the CLI. Remove any options with
     // undefined values or zero-length arrays. Pass back any config files along with the
     // supplemental config.
     const additionalConfig = removeEmptyProperties(configArgs);

@@ -11,8 +11,11 @@ import {
 	displayHelp,
 	displayVersion,
 	getStandardOptions,
+	getPalette,
+	setPalette,
 	processCommands,
 	type CliData,
+	type Palette,
 	type ParseOptions,
 } from '../src/cli.ts';
 
@@ -280,5 +283,136 @@ Deno.test('processCommands: triggers displayHelp and exits when --help is presen
 				assertEquals(calls[0][0], 'Usage line');
 			});
 		});
+	});
+});
+
+Deno.test('getPalette: returns default palette with expected keys', () => {
+	const palette = getPalette();
+	
+	assertEquals(palette.default, 'display: revert');
+	assertEquals(palette.section, 'color: yellow');
+	assertEquals(palette.option, 'color: green');
+	assertEquals(palette.value, 'color: cyan; font-weight: bold');
+	assertEquals(palette.usage, 'color: gray');
+});
+
+Deno.test('getPalette: returns a deep copy of the palette', () => {
+	const palette1 = getPalette();
+	const palette2 = getPalette();
+	
+	// Should be equal in content
+	assertEquals(palette1, palette2);
+	
+	// But not the same object reference
+	assert(palette1 !== palette2);
+});
+
+Deno.test('getPalette: returns independent copies even after modifications', () => {
+	const originalPalette = getPalette();
+	
+	// Modify the returned copy
+	const modifiedCopy = getPalette();
+	modifiedCopy.option = 'color: red';
+	
+	// Original should not be affected
+	const afterModify = getPalette();
+	assertEquals(afterModify.option, 'color: green');
+	assertEquals(originalPalette.option, 'color: green');
+});
+
+Deno.test('setPalette: updates a single color in the palette', () => {
+	const originalPalette = getPalette();
+	assertEquals(originalPalette.section, 'color: yellow');
+	
+	setPalette({ section: 'color: magenta' });
+	
+	const after = getPalette();
+	assertEquals(after.section, 'color: magenta');
+	
+	// Reset to original for other tests
+	setPalette({ section: 'color: yellow' });
+});
+
+Deno.test('setPalette: updates multiple colors in the palette', () => {
+	setPalette({ 
+		section: 'color: red',
+		option: 'color: blue',
+		value: 'color: orange'
+	});
+	
+	const after = getPalette();
+	assertEquals(after.section, 'color: red');
+	assertEquals(after.option, 'color: blue');
+	assertEquals(after.value, 'color: orange');
+	// Other values should be unchanged
+	assertEquals(after.default, 'display: revert');
+	assertEquals(after.usage, 'color: gray');
+	
+	// Reset for other tests
+	setPalette({
+		section: 'color: yellow',
+		option: 'color: green',
+		value: 'color: cyan; font-weight: bold'
+	});
+});
+
+Deno.test('setPalette: preserves unchanged palette values', () => {
+	const before = getPalette();
+	const originalUsage = before.usage;
+	
+	// Only update one color
+	setPalette({ section: 'color: purple' });
+	
+	const after = getPalette();
+	assertEquals(after.usage, originalUsage);
+	assertEquals(after.option, 'color: green');
+	assertEquals(after.value, 'color: cyan; font-weight: bold');
+	assertEquals(after.default, 'display: revert');
+	
+	// Reset
+	setPalette({ section: 'color: yellow' });
+});
+
+Deno.test('getPalette: reflects changes made by setPalette', () => {
+	const newValue = 'color: pink; text-decoration: underline';
+	setPalette({ value: newValue });
+	
+	const palette = getPalette();
+	assertEquals(palette.value, newValue);
+	
+	// Reset
+	setPalette({ value: 'color: cyan; font-weight: bold' });
+});
+
+Deno.test('setPalette: with empty partial palette does nothing', () => {
+	const beforePalette = getPalette();
+	
+	setPalette({});
+	
+	const afterPalette = getPalette();
+	assertEquals(beforePalette, afterPalette);
+});
+
+Deno.test('setPalette: can set all palette values to custom strings', () => {
+	const customPalette: Palette = {
+		default: 'font-weight: bold',
+		section: 'color: cyan',
+		option: 'color: gray',
+		value: 'font-style: italic',
+		usage: 'color: green'
+	};
+	
+	setPalette(customPalette);
+	
+	const result = getPalette();
+	assertEquals(result, customPalette);
+	
+	// Reset to original
+	setPalette({
+		default: 'display: revert',
+		section: 'color: yellow',
+		option: 'color: green',
+		value: 'color: cyan; font-weight: bold',
+		usage: 'color: gray'
 	});
 });
