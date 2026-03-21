@@ -354,7 +354,7 @@ function removeEmptyProperties(obj: TConfig): TConfig | undefined {
             continue;
         }
         if (typeof value === 'object' && value !== null) {
-            const nested = removeEmptyProperties(value as TConfig);
+            const nested = removeEmptyProperties(value);
             if (nested !== undefined) {
                 newObj[key] = nested;
             }

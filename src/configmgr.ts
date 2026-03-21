@@ -74,9 +74,9 @@ async function findConfigFile(name: string): Promise<Result<string, string>> {
 }
 
 /**
- * TConfigElement is a recursive type that can represent any element of a valid JSON structure.
+ * TConfigElement is a recursive type that can represent any JSON value stored in a config object.
  */
-export type TConfigElement = 
+export type TConfigElement =
     | string
     | number
     | boolean
@@ -87,7 +87,9 @@ export type TConfigElement =
 /**
  * TConfig represents a JSON-derived configuration object.
  */
-export type TConfig = { [key: string]: TConfigElement };
+export interface TConfig {
+    [key: string]: TConfigElement;
+}
 
 /**
  * Interface for functions that will replace environment variables with their actual values. 
@@ -209,14 +211,13 @@ export class ConfigManager {
                     return await this.replacer.replace(variableName);
                 } catch (err) {
                     this.errors.push(err instanceof Error ? err.message : String(err));
-                    return config;  // Return the original string if replacement fails, so that the error can be reported later.
+                    return config;  // Return the original string if replacement fails
                 }
             }
             return config;
         } else if (Array.isArray(config)) {
             for (let index = 0; index < config.length; index++) {
                 config[index] = await this.deepReplace(config[index]);
-
             }
         } else if (config !== null && typeof config === 'object') {
             for (const key in config) {
@@ -294,17 +295,17 @@ export class ConfigManager {
      * error string if there were validation errors.
      */
     getValidatedConfig(section: string | undefined, schema: TSchema): Result<Static<TSchema>, string> {
-        let config = this.mergedConfig;
+        let config: TConfigElement = this.mergedConfig;
 
         if (section) {
             const parts = section.split('.');
             for (const part of parts) {
-                if (typeof config === 'object' && config !== null && part in config) {
-                    config = config[part] as TConfig;
+                if (typeof config === 'object' && config !== null && !Array.isArray(config) && part in config) {
+                    config = config[part];
                 } else {
                     // Set to empty object to trigger validation errors for missing section,
                     // or to use default values from the schema if appropriate.
-                    config = {};  
+                    config = {};
                     break;
                 }
             }
