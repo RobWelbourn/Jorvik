@@ -11,7 +11,7 @@
     "typebox": "npm:typebox@^1.1.6"
   },
   "name": "@jorvik/jorvik",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Configuration management for TypeScript apps",
   "license": "MIT",
   "exports": {
