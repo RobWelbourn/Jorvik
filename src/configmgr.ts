@@ -266,8 +266,8 @@ export class ConfigManager<S extends TSchema = TSchema> {
 
         try {
             const validated = customParse(this.schema, this.mergedConfig);
-            if (this.hasErrors()) {
-                return failure(this.getErrors());
+            if (this.errors.length > 0) {
+                return failure([...this.errors]);
             }
             return success(validated);
         } catch (error) {
@@ -278,23 +278,7 @@ export class ConfigManager<S extends TSchema = TSchema> {
             } else {
                 this.errors.push(String(error));
             }
-            return failure(this.getErrors());
+            return failure([...this.errors]);
         }
-    }
-
-    /**
-     * Does this Config instance have any errors from loading or processing the configuration files?
-     * @returns true if there are errors, false otherwise.
-     */
-    hasErrors(): boolean {
-        return this.errors.length > 0;
-    }
-
-    /**
-     * Returns the list of error messages accumulated during loading and processing.
-     * @returns Error messages, or an empty array if there are none.
-     */
-    getErrors(): string[] {
-        return [...this.errors];
     }
 }

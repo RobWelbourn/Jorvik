@@ -79,7 +79,7 @@ async function _cleanupTestConfigDir(): Promise<void> {
 Deno.test('ConfigManager: empty constructor', async () => {
     const config = createConfigManager();
     const configResult = await config.load();
-    assertEquals(config.hasErrors(), false);
+    assertEquals(configResult.success, true);
     const cfg0 = getSuccessValue(configResult);
     assertExists(cfg0);
 });
@@ -92,7 +92,7 @@ Deno.test('ConfigManager: load single config file', async () => {
     try {
         const config = createConfigManager('test.json5');
         const configResult = await config.load();
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
         const cfg = getSuccessValue(configResult);
         assertExists(cfg);
         const c = cfg as typeof testConfig;
@@ -107,9 +107,10 @@ Deno.test('ConfigManager: load non-existent file', async () => {
     await createTestConfigDir();
     const config = createConfigManager('nonexistent.json5');
     const configResult = await config.load();
-    assertEquals(config.hasErrors(), true);
     assertEquals(configResult.success, false);
-    assert(config.getErrors().some((error) => error.includes('Failed to find config file')));
+    if (!configResult.success) {
+        assert(configResult.error.some((e) => e.includes('Failed to find config file')));
+    }
 });
 
 Deno.test('ConfigManager: load multiple config files', async () => {
@@ -123,7 +124,7 @@ Deno.test('ConfigManager: load multiple config files', async () => {
     try {
         const config = createConfigManager(['config1.json5', 'config2.json5']);
         const configResult = await config.load();
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
         const cfg = getSuccessValue(configResult);
         assertExists(cfg);
         const c = cfg as typeof config1 & typeof config2;
@@ -147,7 +148,7 @@ Deno.test('ConfigManager: merge configs with override', async () => {
     try {
         const config = createConfigManager(['config1.json5', 'config2.json5']);
         const configResult = await config.load();
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
         const cfg = getSuccessValue(configResult);
         assertExists(cfg);
         const c = cfg as typeof config1 & typeof config2;
@@ -171,7 +172,7 @@ Deno.test('ConfigManager: replace environment variables', async () => {
         const config = createConfigManager('envtest.json5');
         const configResult = await config.load();
         // console.log(JSON.stringify(getSuccessValue(configResult)));
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
         const cfg = getSuccessValue(configResult);
         assertExists(cfg);
         const c = cfg as typeof testConfig;
@@ -190,8 +191,7 @@ Deno.test('ConfigManager: handle escaped dollar sign', async () => {
         const config = createConfigManager('escapedtest.json5');
         const configResult = await config.load();
         // console.log(JSON.stringify(getSuccessValue(configResult)));
-        // console.log(config.getErrors());
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
         const cfg = getSuccessValue(configResult);
         assertExists(cfg);
         const c = cfg as typeof testConfig;
@@ -212,10 +212,10 @@ Deno.test('ConfigManager: error on undefined environment variable', async () => 
         const config = createConfigManager('undeftest.json5');
         const configResult = await config.load();
         // console.log(JSON.stringify(getSuccessValue(configResult)));
-        // console.log(config.getErrors());
-        assertEquals(config.hasErrors(), true);
         assertEquals(configResult.success, false);
-        assert(config.getErrors().some((error) => error.includes('is not defined')));
+        if (!configResult.success) {
+            assert(configResult.error.some((e) => e.includes('is not defined')));
+        }
     } finally {
         await deleteTestConfig('undeftest.json5');
     }
@@ -242,7 +242,7 @@ Deno.test('ConfigManager: JSON5 parsing', async () => {
     try {
         const config = createConfigManager('json5test.json5');
         const configResult = await config.load();
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
         const cfg = getSuccessValue(configResult);
         assertExists(cfg);
         const c = cfg as dbConfig;
@@ -266,11 +266,11 @@ Deno.test('ConfigManager: JSON5 parse errors', async () => {
     try {
         const config = createConfigManager('json5parseerror.json5');
         const configResult = await config.load();
-        assertEquals(config.hasErrors(), true);
         assertEquals(configResult.success, false);
-        const errors = config.getErrors();
-        assert(errors.some((error) => error.includes('Failed to parse config file json5parseerror.json5:')));
-        assert(errors.some((error) => error.includes('JSON5')));
+        if (!configResult.success) {
+            assert(configResult.error.some((e) => e.includes('Failed to parse config file json5parseerror.json5:')));
+            assert(configResult.error.some((e) => e.includes('JSON5')));
+        }
     } finally {
         await deleteTestConfig('json5parseerror.json5');
     }
@@ -284,7 +284,7 @@ Deno.test('ConfigManager: load config with arrays', async () => {
     try {
         const config = createConfigManager('arraytest.json5');
         const configResult = await config.load();
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
         const cfg = getSuccessValue(configResult);
         assertExists(cfg);
         const c = cfg as typeof testConfig;
@@ -312,7 +312,7 @@ Deno.test('ConfigManager: load config with nested objects', async () => {
     try {
         const config = createConfigManager('nestedtest.json5');
         const configResult = await config.load();
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
         const cfg = getSuccessValue(configResult);
         assertExists(cfg);
         const c = cfg as typeof testConfig;
@@ -330,7 +330,7 @@ Deno.test('ConfigManager: load config with null values', async () => {
     try {
         const config = createConfigManager('nulltest.json5');
         const configResult = await config.load();
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
         const cfg = getSuccessValue(configResult);
         assertExists(cfg);
         const c = cfg as typeof testConfig;
@@ -349,7 +349,7 @@ Deno.test('ConfigManager: load config with boolean and number values', async () 
     try {
         const config = createConfigManager('typestest.json5');
         const configResult = await config.load();
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
         const cfg = getSuccessValue(configResult);
         assertExists(cfg);
         const c = cfg as typeof testConfig;
@@ -371,7 +371,6 @@ Deno.test('ConfigManager: load multiple files with partial errors', async () => 
         const config = createConfigManager(['valid.json5', 'nonexistent.json5']);
         const configResult = await config.load();
         // Any load error now yields a failure Result.
-        assertEquals(config.hasErrors(), true);
         assertEquals(configResult.success, false);
         if (!configResult.success) {
             assert(configResult.error.some((error) => error.includes('Failed to find config file')));
@@ -397,8 +396,7 @@ Deno.test('ConfigManager: environment variable replacement in nested config', as
         const config = createConfigManager('nestedenvtest.json5');
         const configResult = await config.load();
         // console.log(JSON.stringify(getSuccessValue(configResult)));
-        // console.log(config.getErrors());
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
         const cfg = getSuccessValue(configResult);
         assertExists(cfg);
         const c = cfg as typeof testConfig;
@@ -418,8 +416,7 @@ Deno.test('ConfigManager: environment variable replacement in arrays', async () 
         const config = createConfigManager('arrayenvtest.json5');
         const configResult = await config.load();
         // console.log(JSON.stringify(getSuccessValue(configResult)));
-        // console.log(config.getErrors());
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
         const cfg = getSuccessValue(configResult);
         assertExists(cfg);
         const c = cfg as typeof testConfig;
@@ -438,14 +435,14 @@ Deno.test('ConfigManager: constructor with string vs array', async () => {
         // Test string constructor
         const config1 = createConfigManager('constructtest.json5');
         const config1Result = await config1.load();
-        assertEquals(config1.hasErrors(), false);
+        assertEquals(config1Result.success, true);
         const cfg1 = getSuccessValue(config1Result);
         assertExists(cfg1);
 
         // Test array constructor
         const config2 = createConfigManager(['constructtest.json5']);
         const config2Result = await config2.load();
-        assertEquals(config2.hasErrors(), false);
+        assertEquals(config2Result.success, true);
         const cfg2 = getSuccessValue(config2Result);
         assertExists(cfg2);
     } finally {
@@ -464,7 +461,7 @@ Deno.test('ConfigManager: constructor uses provided Replacer for variable substi
     try {
         const config = createConfigManager('custom-replacer.json5', replacer);
         const configResult = await config.load();
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
 
         const cfg = getSuccessValue(configResult) as typeof testConfig;
         assertEquals(cfg.database.host, 'replaced-by-mock');
@@ -486,9 +483,10 @@ Deno.test('ConfigManager: constructor reports errors from provided Replacer', as
     try {
         const config = createConfigManager('custom-replacer-error.json5', replacer);
         const configResult = await config.load();
-        assertEquals(config.hasErrors(), true);
         assertEquals(configResult.success, false);
-        assert(config.getErrors().some((error) => error.includes('mock replacer failure')));
+        if (!configResult.success) {
+            assert(configResult.error.some((e) => e.includes('mock replacer failure')));
+        }
         assertEquals(replacer.calls, ['API_KEY']);
     } finally {
         await deleteTestConfig('custom-replacer-error.json5');
@@ -505,7 +503,7 @@ Deno.test('ConfigManager: constructor Replacer is not called for plain strings',
     try {
         const config = createConfigManager('custom-replacer-literal.json5', replacer);
         const configResult = await config.load();
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
 
         const cfg = getSuccessValue(configResult) as typeof testConfig;
         assertEquals(cfg.host, 'literal-host');
@@ -586,7 +584,7 @@ Deno.test('ConfigManager: load default.json5 when present', async () => {
     try {
         const config = createConfigManager();
         const configResult = await config.load();
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
         const cfg = getSuccessValue(configResult) as typeof defaultConfig;
         assertEquals(cfg.source, 'default-json5');
         assertEquals(cfg.value, 1);
@@ -605,7 +603,7 @@ Deno.test('ConfigManager: default then local merge and override (json5)', async 
     try {
         const config = createConfigManager();
         const configResult = await config.load();
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
         const cfg = getSuccessValue(configResult) as typeof defaultConfig & typeof localConfig;
         // default value preserved
         assertEquals(cfg.value, 'from-default');
@@ -648,7 +646,7 @@ Deno.test('ConfigManager: addConfig with single config object', async () => {
     config.addConfig(addedConfig);
     const configResult = await config.load();
     
-    assertEquals(config.hasErrors(), false);
+    assertEquals(configResult.success, true);
     const cfg = getSuccessValue(configResult) as typeof addedConfig;
     assertEquals(cfg.database.host, 'added-host');
     assertEquals(cfg.database.port, 5432);
@@ -666,7 +664,7 @@ Deno.test('ConfigManager: addConfig with multiple config objects', async () => {
     config.addConfig(config3);
     const configResult = await config.load();
     
-    assertEquals(config.hasErrors(), false);
+    assertEquals(configResult.success, true);
     const cfg = getSuccessValue(configResult) as typeof config1 & typeof config2 & typeof config3;
     assertEquals(cfg.database.host, 'localhost');
     assertEquals(cfg.database.port, 3306);
@@ -683,7 +681,7 @@ Deno.test('ConfigManager: addConfig merge order and override', async () => {
     config.addConfig(config2);
     const configResult = await config.load();
     
-    assertEquals(config.hasErrors(), false);
+    assertEquals(configResult.success, true);
     const cfg = getSuccessValue(configResult) as typeof config1 & typeof config2;
     // Later config should override earlier ones
     assertEquals(cfg.value, 'second');
@@ -704,7 +702,7 @@ Deno.test('ConfigManager: addConfig with file-based configs', async () => {
         config.addConfig(addedConfig);
         const configResult = await config.load();
         
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
         const cfg = getSuccessValue(configResult) as typeof fileConfig & typeof addedConfig;
         // addConfig should be merged after file configs, so it overrides
         assertEquals(cfg.source, 'added');
@@ -731,7 +729,7 @@ Deno.test('ConfigManager: addConfig with multiple files and configs', async () =
         config.addConfig(added2);
         const configResult = await config.load();
         
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
         const cfg = getSuccessValue(configResult) as typeof file1 & typeof file2 & typeof added1 & typeof added2;
         // Last added config should have final say
         assertEquals(cfg.level, 'added2');
@@ -755,7 +753,7 @@ Deno.test('ConfigManager: addConfig with empty object', async () => {
     config.addConfig({});
     const configResult = await config.load();
     
-    assertEquals(config.hasErrors(), false);
+    assertEquals(configResult.success, true);
     const cfg = getSuccessValue(configResult) as typeof baseConfig;
     // Empty config shouldn't affect existing values
     assertEquals(cfg.value, 'test');
@@ -780,7 +778,7 @@ Deno.test('ConfigManager: addConfig with nested objects', async () => {
     config.addConfig(config2);
     const configResult = await config.load();
     
-    assertEquals(config.hasErrors(), false);
+    assertEquals(configResult.success, true);
     const cfg = getSuccessValue(configResult) as typeof config1;
     assertEquals(cfg.app.name, 'myapp');
     assertEquals(cfg.app.settings.theme, 'light'); // Overridden
@@ -797,7 +795,7 @@ Deno.test('ConfigManager: addConfig with arrays', async () => {
     config.addConfig(config2);
     const configResult = await config.load();
     
-    assertEquals(config.hasErrors(), false);
+    assertEquals(configResult.success, true);
     const cfg = getSuccessValue(configResult) as typeof config1 & typeof config2;
     // Arrays should be replaced, not merged
     assertEquals(cfg.servers, ['server3']);
@@ -814,7 +812,7 @@ Deno.test('ConfigManager: addConfig with environment variable replacement', asyn
     config.addConfig(addedConfig);
     const configResult = await config.load();
     
-    assertEquals(config.hasErrors(), false);
+    assertEquals(configResult.success, true);
     const cfg = getSuccessValue(configResult) as typeof addedConfig;
     assertEquals(cfg.database.host, 'env-host');
 });
@@ -833,7 +831,7 @@ Deno.test('ConfigManager: addConfig with null and boolean values', async () => {
     config.addConfig(addedConfig);
     const configResult = await config.load();
     
-    assertEquals(config.hasErrors(), false);
+    assertEquals(configResult.success, true);
     const cfg = getSuccessValue(configResult) as typeof addedConfig;
     assertEquals(cfg.enabled, true);
     assertEquals(cfg.disabled, false);
@@ -869,7 +867,7 @@ Deno.test('ConfigManager: load config from current directory', async () => {
     try {
         const config = createConfigManager(filename);
         const configResult = await config.load();
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
         const cfg = getSuccessValue(configResult) as typeof testConfig;
         assertEquals(cfg.source, 'current-dir');
         assertEquals(cfg.value, 42);
@@ -895,7 +893,7 @@ Deno.test('ConfigManager: current directory takes precedence over ./config', asy
     try {
         const config = createConfigManager(filename);
         const configResult = await config.load();
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
         const cfg = getSuccessValue(configResult) as typeof currentDirConfig;
         // Should load from current directory, not ./config
         assertEquals(cfg.source, 'current');
@@ -928,7 +926,7 @@ Deno.test('ConfigManager: load from ./config when not in current directory', asy
         
         const config = createConfigManager(filename);
         const configResult = await config.load();
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
         const cfg = getSuccessValue(configResult) as typeof testConfig;
         assertEquals(cfg.source, 'config-dir');
         assertEquals(cfg.location, 'config');
@@ -949,7 +947,7 @@ Deno.test('ConfigManager: load file with explicit path', async () => {
     try {
         const config = createConfigManager(filePath);
         const configResult = await config.load();
-        assertEquals(config.hasErrors(), false);
+        assertEquals(configResult.success, true);
         const cfg = getSuccessValue(configResult) as typeof testConfig;
         assertEquals(cfg.source, 'explicit-path');
         assertEquals(cfg.path, 'temp-test-dir');
@@ -980,11 +978,11 @@ Deno.test('ConfigManager: file not found in current or config directory', async 
     
     const config = createConfigManager(filename);
     const configResult = await config.load();
-    assertEquals(config.hasErrors(), true);
     assertEquals(configResult.success, false);
-    const errors = config.getErrors();
-    assert(errors.some((error) => error.includes('Failed to find config file')));
-    assert(errors.some((error) => error.includes('not found in current directory or ./config')));
+    if (!configResult.success) {
+        assert(configResult.error.some((e) => e.includes('Failed to find config file')));
+        assert(configResult.error.some((e) => e.includes('not found in current directory or ./config')));
+    }
 });
 
 Deno.test('ConfigManager: file with explicit path not found', async () => {
@@ -992,8 +990,8 @@ Deno.test('ConfigManager: file with explicit path not found', async () => {
     
     const config = createConfigManager(nonExistentPath);
     const configResult = await config.load();
-    assertEquals(config.hasErrors(), true);
     assertEquals(configResult.success, false);
-    const errors = config.getErrors();
-    assert(errors.some((error) => error.includes('Failed to find config file')));
+    if (!configResult.success) {
+        assert(configResult.error.some((e) => e.includes('Failed to find config file')));
+    }
 });
