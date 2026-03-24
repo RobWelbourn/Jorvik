@@ -240,7 +240,7 @@ export class ConfigManager<S extends TSchema = TSchema> {
      * Loads, merges, replaces env placeholders, and validates against the schema passed to the constructor.
      * @returns Result containing validated config on success, or error messages on failure.
      */
-    async load(): Promise<Result<Static<S>, string[]>> {
+    async load(): Promise<Result<Static<S>, string>> {
         if (this.files.length === 0) {
             this.files = await getDefaultConfigFiles();
         }
@@ -273,7 +273,7 @@ export class ConfigManager<S extends TSchema = TSchema> {
         try {
             const validated = customParse(this.schema, this.mergedConfig);
             if (this.errors.length > 0) {
-                return failure([...this.errors]);
+                return failure(this.errors.join('\n'));
             }
             return success(validated);
         } catch (error) {
@@ -284,7 +284,7 @@ export class ConfigManager<S extends TSchema = TSchema> {
             } else {
                 this.errors.push(String(error));
             }
-            return failure([...this.errors]);
+            return failure(this.errors.join('\n'));
         }
     }
 }

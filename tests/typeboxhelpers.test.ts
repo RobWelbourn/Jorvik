@@ -72,6 +72,13 @@ Deno.test('formatParseError: handles empty instancePath', () => {
     assertEquals(formatted, 'root Expected object');
 });
 
+Deno.test('formatParseError: replaces empty path with Configuration when section is undefined', () => {
+    const err = makeParseError({ instancePath: '', message: 'Expected object' });
+
+    const formatted = formatParseError(undefined, err);
+    assertEquals(formatted, 'Configuration Expected object');
+});
+
 Deno.test('formatParseError: converts nested paths and array indexes', () => {
     const err = makeParseError({ instancePath: '/db/hosts/0/name', message: 'Expected string' });
 

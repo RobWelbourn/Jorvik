@@ -39,11 +39,13 @@ export function customParse<S extends TSchema>(schema: S, value: unknown): Stati
  */
 export function formatParseError(section: string | undefined, err: ParseError): string {
     // Convert instance paths to dot notation and add square brackets for array indices.
+    // Replace empty paths with 'Configuration' for better readability.
     function normalizePath(path: string): string {
-        return path
+        const normalizedPath = path
             .replaceAll('/', '.')
             .replace(/^\./, '') // Remove leading dot if present
             .replaceAll(/\.(\d+)/g, '[$1]'); // Convert .0, .1, etc. to [0], [1], etc.
+        return normalizedPath || 'Configuration';
     }
 
     // console.log('ParseError:', err.cause);

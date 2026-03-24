@@ -31,10 +31,10 @@ function createConfigManager(files: string | string[] = [], replacer?: { replace
     return new ConfigManager(permissiveSchema, files, replacer ? { replacer } : {});
 }
 
-function getSuccessValue<T>(result: Result<T, string[]>): T {
+function getSuccessValue<T>(result: Result<T, string>): T {
     assertEquals(result.success, true);
     if (!result.success) {
-        throw new Error(result.error.join('\n'));
+        throw new Error(result.error);
     }
     return result.value;
 }
@@ -109,7 +109,7 @@ Deno.test('ConfigManager: load non-existent file', async () => {
     const configResult = await config.load();
     assertEquals(configResult.success, false);
     if (!configResult.success) {
-        assert(configResult.error.some((e) => e.includes('Failed to find config file')));
+        assert(configResult.error.includes('Failed to find config file'));
     }
 });
 
@@ -214,7 +214,7 @@ Deno.test('ConfigManager: error on undefined environment variable', async () => 
         // console.log(JSON.stringify(getSuccessValue(configResult)));
         assertEquals(configResult.success, false);
         if (!configResult.success) {
-            assert(configResult.error.some((e) => e.includes('is not defined')));
+            assert(configResult.error.includes('is not defined'));
         }
     } finally {
         await deleteTestConfig('undeftest.json5');
@@ -268,8 +268,8 @@ Deno.test('ConfigManager: JSON5 parse errors', async () => {
         const configResult = await config.load();
         assertEquals(configResult.success, false);
         if (!configResult.success) {
-            assert(configResult.error.some((e) => e.includes('Failed to parse config file json5parseerror.json5:')));
-            assert(configResult.error.some((e) => e.includes('JSON5')));
+            assert(configResult.error.includes('Failed to parse config file json5parseerror.json5:'));
+            assert(configResult.error.includes('JSON5'));
         }
     } finally {
         await deleteTestConfig('json5parseerror.json5');
@@ -373,7 +373,7 @@ Deno.test('ConfigManager: load multiple files with partial errors', async () => 
         // Any load error now yields a failure Result.
         assertEquals(configResult.success, false);
         if (!configResult.success) {
-            assert(configResult.error.some((error) => error.includes('Failed to find config file')));
+            assert(configResult.error.includes('Failed to find config file'));
         }
     } finally {
         await deleteTestConfig('valid.json5');
@@ -485,7 +485,7 @@ Deno.test('ConfigManager: constructor reports errors from provided Replacer', as
         const configResult = await config.load();
         assertEquals(configResult.success, false);
         if (!configResult.success) {
-            assert(configResult.error.some((e) => e.includes('mock replacer failure')));
+            assert(configResult.error.includes('mock replacer failure'));
         }
         assertEquals(replacer.calls, ['API_KEY']);
     } finally {
@@ -628,7 +628,7 @@ Deno.test('ConfigManager: load rejects additional properties when additionalProp
         const result = await mgr.load();
         assertEquals(result.success, false);
         if (!result.success) {
-            const found = result.error.some((error) => error.includes('additional properties'));
+            const found = result.error.includes('additional properties');
             assert(found);
         }
     } finally {
@@ -980,8 +980,8 @@ Deno.test('ConfigManager: file not found in current or config directory', async 
     const configResult = await config.load();
     assertEquals(configResult.success, false);
     if (!configResult.success) {
-        assert(configResult.error.some((e) => e.includes('Failed to find config file')));
-        assert(configResult.error.some((e) => e.includes('not found in current directory or ./config')));
+        assert(configResult.error.includes('Failed to find config file'));
+        assert(configResult.error.includes('not found in current directory or ./config'));
     }
 });
 
@@ -992,6 +992,6 @@ Deno.test('ConfigManager: file with explicit path not found', async () => {
     const configResult = await config.load();
     assertEquals(configResult.success, false);
     if (!configResult.success) {
-        assert(configResult.error.some((e) => e.includes('Failed to find config file')));
+        assert(configResult.error.includes('Failed to find config file'));
     }
 });
