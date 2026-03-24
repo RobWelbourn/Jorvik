@@ -1,5 +1,6 @@
 /**
- * @fileoverview Helper functions for working with TypeBox schemas and values.
+ * @module typeboxhelpers
+ * Helper functions for working with TypeBox schemas and values.
  * Note: Requires TypeBox 1.1 or later for the customParse function to work correctly, due to
  * breaking changes in the Parse function.
  */

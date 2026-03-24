@@ -1,5 +1,6 @@
 /**
- * @fileoverview Functions for creating a CLI from a TypeBox schema.  Standard options for help, version and
+ * @module cli
+ * Functions for creating a CLI from a TypeBox schema.  Standard options for help, version and
  * config file names are included, and additional options are created from the 'title' and 'description' metadata
  * in the schema.  The CLI is displayed with aligned columns and color formatting.
  */
@@ -10,9 +11,7 @@ import type * as typebox from 'typebox';
 import { type Result, failure, success } from './result.ts';
 import type { TConfig } from './configmgr.ts';
 
-/**
- * Simplified version of TypeBox's TSchema, containing only fields relevant for CLI generation.
- */
+/** Simplified version of TypeBox's TSchema, containing only fields relevant for CLI generation. */
 type TSchema = {
     type: 'object' | 'array' | 'string' | 'number' | 'boolean';
     properties?: { [key: string]: TSchema };
@@ -31,11 +30,16 @@ const MAX_COLUMN1_WIDTH = 35; // Max width for the first column in CLI help disp
  * option names, option values and usage instructions.
  */
 export type Palette = {
-    default: string; // Default color for regular text (black or light-gray, depending on terminal background)
-    section: string; // Color for section headers
-    option: string; // Color for option names
-    value: string; // Color for option values
-    usage: string; // Color for usage instructions
+    /** Default color for regular text (black or light-gray, depending on terminal background) */
+    default: string; 
+    /** Color for section headers */
+    section: string;
+    /** Color for option names */
+    option: string;
+    /** Color for option values */
+    value: string;
+    /** Color for usage instructions */
+    usage: string;
 };
 
 const palette: Palette = {
@@ -69,29 +73,36 @@ export function setPalette(replacements: Partial<Palette>): void {
  * @see https://docs.deno.com/examples/color_logging/
  */
 export type Line = {
+    /** First column */
     column1: string;
+    /** Second column (optional) */
     column2?: string;
+    /** CSS format strings for the line */
     format?: string | string[];
 };
 
-/**
- * Data structure returned by compileCli, containing lines to display and options for parsing CLI arguments.
- */
+/** Data structure returned by compileCli, containing lines to display and options for parsing CLI arguments. */
 export type CliData = {
+    /** Array of lines to display. */
     lines: Line[];
+    /** Options for parsing CLI arguments. */
     parseOptions?: ParseOptions;
 };
 
-/**
- * Compatible subset of CLI ParseOptions.
- */
+/** Compatible subset of CLI ParseOptions. */
 export type ParseOptions = {
-    boolean: string[]; // array of boolean options; not used
-    negatable: string[]; // array of boolean options that can be negated with --no- prefix
-    string: string[]; // array of string and numeric options; not used
-    collect: string[]; // array of options of which there can be multiple instances
-    default: { [key: string]: string | number | boolean }; // options with default values; not used
-    alias: { [key: string]: string }; // option aliases
+    /** Array of boolean options; not used */
+    boolean: string[];
+    /** Array of boolean options that can be negated with --no- prefix */
+    negatable: string[];
+    /** Array of string and numeric options; not used */
+    string: string[];
+    /** Array of options of which there can be multiple instances */
+    collect: string[];
+    /** Options with default values; not used */
+    default: { [key: string]: string | number | boolean };
+    /** Option aliases */
+    alias: { [key: string]: string };
 };
 
 /**

@@ -1,19 +1,23 @@
 /**
- * @fileoverview Defines a Result type that can represent either a successful value or an error. 
+ * @module result
+ * Defines a Result type that can represent either a successful value or an error. 
  * This is useful for functions that may fail and need to return an error message or object instead 
  * of throwing an exception.
  */
 
+/** Success result type */
 type Success<T> = {
     success: true;
     value: T;
 };
 
+/** Failure result type */
 type Failure<E> = {
     success: false;
     error: E;
 };
 
+/** Composite result type that can be either a success or a failure. */
 export type Result<T, E> = Success<T> | Failure<E>;
 
 /**

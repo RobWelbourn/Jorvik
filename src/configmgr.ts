@@ -1,5 +1,6 @@
 /**
- * @filedesc A class and associated types for processing configuration files. 
+ * @module configmgr
+ * A class and associated types for processing configuration files. 
  */
 import * as path from '@std/path';
 import JSON5 from 'json5';
@@ -84,6 +85,7 @@ export type TConfigElement =
 
 /** TConfig represents a JSON-derived configuration object. */
 export interface TConfig {
+    /** Key-value pairs where the key is a string and the value is a TConfigElement. */
     [key: string]: TConfigElement;
 }
 
@@ -105,7 +107,7 @@ export interface Replacer {
 }
 
 /**
- * @classdesc A Replacer implementation that replaces environment variables
+ * @class A Replacer implementation that replaces environment variables
  * with their actual values from the local process environment.
  */
 class EnvVariableReplacer implements Replacer {
@@ -125,29 +127,29 @@ class EnvVariableReplacer implements Replacer {
     }
 }
 
-/** 
- * Options for the ConfigManager constructor. 
- * @prop replacer Replacer object that gets the values of secrets; defaults to a standard Replacer 
- * that gets values from local environment variables. 
- */
+/** Options for the ConfigManager constructor. */
 export interface ConfigOptions {
+    /** 
+     * Replacer object that replaces environment variable values from a secrets manager
+     * or from the local environment. 
+     */
     replacer?: Replacer;
 }
 
 /**
- * @classdesc A class for loading, merging, and processing configuration files. The configuration files are 
+ * @class A class for loading, merging, and processing configuration files. The configuration files are 
  * expected to be in JSON5 format and located in the 'config' directory relative to the current working directory. 
  * The class supports loading multiple configuration files, merging them together, and substituting environment 
  * variable placeholders with their actual values. 
  */
 export class ConfigManager<S extends TSchema = TSchema> {
-    private schema: S;
-    private files: string[] = [];
-    private configs: TConfig[] = [];
-    private supplementalConfigs: TConfig[] = []; // Added after constructor, but before load() is called.
-    private mergedConfig: TConfig = {};
-    private errors: string[] = [];
-    private replacer = new EnvVariableReplacer();
+    #schema: S;
+    #files: string[] = [];
+    #configs: TConfig[] = [];
+    #supplementalConfigs: TConfig[] = []; // Added after constructor, but before load() is called.
+    #mergedConfig: TConfig = {};
+    #errors: string[] = [];
+    #replacer = new EnvVariableReplacer();
 
     /**
      * Constructor.
@@ -158,10 +160,10 @@ export class ConfigManager<S extends TSchema = TSchema> {
      * Replacer that gets values from local environment variables.
      */
     constructor(schema: S, files: string | string[] = [], options: ConfigOptions = {}) {
-        this.schema = schema;
-        this.files = Array.isArray(files) ? files : [files];
+        this.#schema = schema;
+        this.#files = Array.isArray(files) ? files : [files];
         if (options.replacer) {
-            this.replacer = options.replacer;
+            this.#replacer = options.replacer;
         }
     }
 
@@ -170,10 +172,11 @@ export class ConfigManager<S extends TSchema = TSchema> {
      * @param config The configuration object to add.
      */
     addConfig(config: TConfig): void {
-        this.supplementalConfigs.push(config);
+        this.#supplementalConfigs.push(config);
     }
 
     /**
+     * @ignore
      * Do a deep merge of two configuration objects. The source object will overwrite any existing
      * values in the target object, but if both values are non-array, non-null objects, they will be
      * merged recursively instead of being overwritten. Note that arrays are replaced rather than
@@ -182,14 +185,14 @@ export class ConfigManager<S extends TSchema = TSchema> {
      * @param source The source configuration object to merge from.
      * @returns A new configuration object that is the result of merging the source into the target.
      */
-    private deepMerge<TElement>(target: TElement, source: TElement): TElement {
+    #deepMerge<TElement>(target: TElement, source: TElement): TElement {
         const isObject = (item: unknown) => item !== null && typeof item === 'object' && !Array.isArray(item);
         const merged = structuredClone(target);
 
         if (isObject(target) && isObject(source)) {
             for (const key in source) {
                 merged[key] = isObject(merged[key]) && isObject(source[key])
-                    ? this.deepMerge(merged[key], source[key])
+                    ? this.#deepMerge(merged[key], source[key])
                     : structuredClone(source[key]);
             }
         }
@@ -197,11 +200,12 @@ export class ConfigManager<S extends TSchema = TSchema> {
     }
 
     /**
+     * @ignore
      * Replaces environment variable placeholders in a configuration object using a provided replacer function.
      * @param config The configuration object.
      * @returns The updated configuration object.
      */
-    private async deepReplace(config: TConfigElement): Promise<TConfigElement> {
+    async #deepReplace(config: TConfigElement): Promise<TConfigElement> {
         if (typeof config === 'string') {
             // Is this an environment variable?
             if (config.startsWith('$')) {
@@ -211,9 +215,9 @@ export class ConfigManager<S extends TSchema = TSchema> {
                     return config.slice(1);
                 }
                 try {
-                    return await this.replacer.replace(variableName);
+                    return await this.#replacer.replace(variableName);
                 } catch (err) {
-                    this.errors.push(err instanceof Error ? err.message : String(err));
+                    this.#errors.push(err instanceof Error ? err.message : String(err));
                     return config; // Return the original string if replacement fails
                 }
             }
@@ -222,14 +226,14 @@ export class ConfigManager<S extends TSchema = TSchema> {
 
         if (Array.isArray(config)) {
             for (let index = 0; index < config.length; index++) {
-                config[index] = await this.deepReplace(config[index]);
+                config[index] = await this.#deepReplace(config[index]);
             }
             return config;
         }
 
         if (config !== null && typeof config === 'object') {
             for (const key in config) {
-                config[key] = await this.deepReplace(config[key]);
+                config[key] = await this.#deepReplace(config[key]);
             }
         }
 
@@ -241,50 +245,50 @@ export class ConfigManager<S extends TSchema = TSchema> {
      * @returns Result containing validated config on success, or error messages on failure.
      */
     async load(): Promise<Result<Static<S>, string>> {
-        if (this.files.length === 0) {
-            this.files = await getDefaultConfigFiles();
+        if (this.#files.length === 0) {
+            this.#files = await getDefaultConfigFiles();
         }
 
-        for (const file of this.files) {
+        for (const file of this.#files) {
             const result = await findConfigFile(file);
             if (result.success) {
                 try {
                     const filePath = result.value;
                     const content = await Deno.readTextFile(filePath);
                     const config = JSON5.parse(content) as TConfig;
-                    this.configs.push(config);
+                    this.#configs.push(config);
                 } catch (err) {
-                    this.errors.push(`Failed to parse config file ${file}:`);
-                    this.errors.push(err instanceof Error ? err.message : String(err));
+                    this.#errors.push(`Failed to parse config file ${file}:`);
+                    this.#errors.push(err instanceof Error ? err.message : String(err));
                 }
             } else {
-                this.errors.push(`Failed to find config file ${file}:`);
-                this.errors.push(result.error);
+                this.#errors.push(`Failed to find config file ${file}:`);
+                this.#errors.push(result.error);
             }
         }
 
-        this.configs.push(...this.supplementalConfigs);
+        this.#configs.push(...this.#supplementalConfigs);
 
-        if (this.configs.length > 0) {
-            this.mergedConfig = this.configs.reduce((target, source) => this.deepMerge(target, source));
-            this.mergedConfig = await this.deepReplace(this.mergedConfig) as TConfig;
+        if (this.#configs.length > 0) {
+            this.#mergedConfig = this.#configs.reduce((target, source) => this.#deepMerge(target, source));
+            this.#mergedConfig = await this.#deepReplace(this.#mergedConfig) as TConfig;
         }
 
         try {
-            const validated = customParse(this.schema, this.mergedConfig);
-            if (this.errors.length > 0) {
-                return failure(this.errors.join('\n'));
+            const validated = customParse(this.#schema, this.#mergedConfig);
+            if (this.#errors.length > 0) {
+                return failure(this.#errors.join('\n'));
             }
             return success(validated);
         } catch (error) {
             if (error instanceof ParseError) {
-                this.errors.push(formatParseError(undefined, error));
+                this.#errors.push(formatParseError(undefined, error));
             } else if (error instanceof Error) {
-                this.errors.push(String(error.message));
+                this.#errors.push(String(error.message));
             } else {
-                this.errors.push(String(error));
+                this.#errors.push(String(error));
             }
-            return failure(this.errors.join('\n'));
+            return failure(this.#errors.join('\n'));
         }
     }
 }
