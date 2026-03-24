@@ -73,9 +73,7 @@ async function findConfigFile(name: string): Promise<Result<string, string>> {
     return failure(`Config file ${name} not found`);  // Catch-all error if file not found
 }
 
-/**
- * TConfigElement is a recursive type that can represent any JSON value stored in a config object.
- */
+/** TConfigElement is a recursive type that can represent any JSON value stored in a config object. */
 export type TConfigElement =
     | string
     | number
@@ -84,9 +82,7 @@ export type TConfigElement =
     | TConfigElement[]
     | TConfig;
 
-/**
- * TConfig represents a JSON-derived configuration object.
- */
+/** TConfig represents a JSON-derived configuration object. */
 export interface TConfig {
     [key: string]: TConfigElement;
 }
@@ -129,6 +125,15 @@ class EnvVariableReplacer implements Replacer {
     }
 }
 
+/** 
+ * Options for the ConfigManager constructor. 
+ * @prop replacer Replacer object that gets the values of secrets; defaults to a standard Replacer 
+ * that gets values from local environment variables. 
+ */
+export interface ConfigOptions {
+    replacer?: Replacer;
+}
+
 /**
  * @classdesc A class for loading, merging, and processing configuration files. The configuration files are 
  * expected to be in JSON5 format and located in the 'config' directory relative to the current working directory. 
@@ -148,14 +153,15 @@ export class ConfigManager<S extends TSchema = TSchema> {
      * Constructor.
      * @param schema TypeBox schema used to validate the configuration.
      * @param files The file name or names to load.
-     * @param replacer Replacer object that will get the values of secrets; defaults to a standard Replacer that
-     * gets values from local environment variables.
+     * @param options Config options:
+     * @param options.replacer Replacer object that gets the values of secrets; defaults to a standard 
+     * Replacer that gets values from local environment variables.
      */
-    constructor(schema: S, files: string | string[] = [], replacer?: Replacer) {
+    constructor(schema: S, files: string | string[] = [], options: ConfigOptions = {}) {
         this.schema = schema;
         this.files = Array.isArray(files) ? files : [files];
-        if (replacer) {
-            this.replacer = replacer;
+        if (options.replacer) {
+            this.replacer = options.replacer;
         }
     }
 

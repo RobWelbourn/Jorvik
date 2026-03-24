@@ -28,7 +28,7 @@ class MockReplacer {
 const permissiveSchema = Type.Any();
 
 function createConfigManager(files: string | string[] = [], replacer?: { replace: (variableName: string) => Promise<string> }) {
-    return new ConfigManager(permissiveSchema, files, replacer);
+    return new ConfigManager(permissiveSchema, files, replacer ? { replacer } : {});
 }
 
 function getSuccessValue<T>(result: Result<T, string[]>): T {
