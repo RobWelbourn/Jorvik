@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 - 2026-03-24
+### Changed
+- Refactored codebase to run under Node.js.
+- Changed ConfigManager constructor to accept a ConfigOptions object; environment variable Replacer
+becomes an option within the ConfigOptions object.
+
 ## 0.2.0 - 2026-03-23
 ### Changed
 - Refactored ConfigManager so that the constructor accepts a TypeBox schema, an optional list 
