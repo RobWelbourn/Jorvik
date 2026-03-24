@@ -6,13 +6,13 @@
  */
 
 /** Success result type */
-type Success<T> = {
+export type Success<T> = {
     success: true;
     value: T;
 };
 
 /** Failure result type */
-type Failure<E> = {
+export type Failure<E> = {
     success: false;
     error: E;
 };
