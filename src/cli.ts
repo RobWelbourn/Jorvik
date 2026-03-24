@@ -4,12 +4,20 @@
  * config file names are included, and additional options are created from the 'title' and 'description' metadata
  * in the schema.  The CLI is displayed with aligned columns and color formatting.
  */
-import meta from '../deno.json' with { type: 'json' };
-import * as path from '@std/path';
-import { parseArgs } from '@std/cli';
+import * as path from 'node:path';
+import { createRequire } from 'node:module';
+import process from 'node:process';
+import { parseArgs as parseNodeArgs } from 'node:util';
 import type * as typebox from 'typebox';
 import { type Result, failure, success } from './result.ts';
 import type { TConfig } from './configmgr.ts';
+
+const require = createRequire(import.meta.url);
+const meta = require('../deno.json') as {
+    name?: string;
+    version?: string;
+    description?: string;
+};
 
 /** Simplified version of TypeBox's TSchema, containing only fields relevant for CLI generation. */
 type TSchema = {
@@ -110,7 +118,69 @@ export type ParseOptions = {
  * @returns The module name.
  */
 function getProgramName() {
-    return path.basename(Deno.mainModule);
+    return path.basename(process.argv[1] ?? 'app.js');
+}
+
+/**
+ * @ignore
+ * Detects whether code is running under Deno or Node.js.
+ * @returns 'deno' when Deno globals are present, otherwise 'node'.
+ */
+export function getRuntimeEnvironment(): 'deno' | 'node' {
+    return typeof globalThis.Deno !== 'undefined' ? 'deno' : 'node';
+}
+
+function parseCliArgs(argv: string[], parseOptions?: ParseOptions): Record<string, unknown> {
+    const options: Record<string, {
+        type: 'boolean' | 'string';
+        multiple?: boolean;
+        short?: string;
+    }> = {};
+
+    const ensureOption = (name: string, type: 'boolean' | 'string', multiple = false) => {
+        const existing = options[name];
+        if (!existing) {
+            options[name] = { type, multiple };
+            return;
+        }
+        if (existing.type !== type) {
+            return;
+        }
+        if (multiple) {
+            existing.multiple = true;
+        }
+    };
+
+    if (parseOptions) {
+        for (const name of parseOptions.boolean) {
+            ensureOption(name, 'boolean');
+        }
+        for (const name of parseOptions.negatable) {
+            ensureOption(name, 'boolean');
+        }
+        for (const name of parseOptions.string) {
+            ensureOption(name, 'string');
+        }
+        for (const name of parseOptions.collect) {
+            ensureOption(name, 'string', true);
+        }
+
+        for (const [longName, shortName] of Object.entries(parseOptions.alias)) {
+            if (longName in options && shortName.length === 1) {
+                options[longName].short = shortName;
+            }
+        }
+    }
+
+    const parsed = parseNodeArgs({
+        args: argv,
+        options,
+        strict: false,
+        allowPositionals: true,
+        allowNegative: true,
+    });
+
+    return parsed.values as Record<string, unknown>;
 }
 
 /**
@@ -257,6 +327,7 @@ export function getStandardOptions(): CliData {
  * @returns Compiled CLI data.
  */
 export function createIntro(intro?: string, usage?: string): CliData {
+    const runtimeCommand = getRuntimeEnvironment() === 'deno' ? 'deno' : 'node';
     const lines = [
         {
             column1: intro 
@@ -270,7 +341,7 @@ export function createIntro(intro?: string, usage?: string): CliData {
         {
             column1: usage 
                 ? `\n%cUsage: %c${usage}` 
-                : `\n%cUsage: %cdeno ${getProgramName()} [OPTIONS]`,
+                : `\n%cUsage: %c${runtimeCommand} ${getProgramName()} [OPTIONS]`,
             format: [palette.usage, palette.default],
         },
     ];
@@ -389,30 +460,38 @@ export function processCommands(cliData: CliData): Result<{
     configFiles: string[];
     additionalConfig: TConfig | undefined;
 }, string> {
-    const args = parseArgs(Deno.args, cliData.parseOptions);
+    const args = parseCliArgs(process.argv.slice(2), cliData.parseOptions);
 
     // Remove standard options from the args object, leaving only those from the config schema. 
-    // deno-lint-ignore no-unused-vars
-    const { _, help, h, version, v, config, c, ...configArgs } = args;
+    const { help, version, config, ...configArgs } = args;
 
     if (version) {
         displayVersion();
-        Deno.exit(0);
+        process.exit(0);
     }
 
     if (help) {
         displayHelp(cliData.lines);
-        Deno.exit(0);
+        process.exit(0);
     }
 
-    if (config && Array.isArray(config) && config.some((c) => typeof c !== 'string')) {
+    const rawConfig = config;
+    let configFiles: string[] = [];
+
+    if (Array.isArray(rawConfig)) {
+        if (rawConfig.some((item) => typeof item !== 'string')) {
+            return failure('Config filenames must be strings');
+        }
+        configFiles = rawConfig;
+    } else if (typeof rawConfig === 'string') {
+        configFiles = [rawConfig];
+    } else if (rawConfig !== undefined) {
         return failure('Config filenames must be strings');
     }
 
     // Look for any supplemental configuration options from the CLI. Remove any options with
     // undefined values or zero-length arrays. Pass back any config files along with the
     // supplemental config.
-    const additionalConfig = removeEmptyProperties(configArgs);
-    const configFiles = config as string[] ?? [];
+    const additionalConfig = removeEmptyProperties(configArgs as TConfig);
     return success({ configFiles, additionalConfig });
 }

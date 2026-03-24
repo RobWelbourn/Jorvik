@@ -2,7 +2,9 @@
  * @module configmgr
  * A class and associated types for processing configuration files. 
  */
-import * as path from '@std/path';
+import * as path from 'node:path';
+import { readFile, stat } from 'node:fs/promises';
+import process from 'node:process';
 import JSON5 from 'json5';
 import { ParseError } from 'typebox/value';
 import type { Static, TSchema } from 'typebox';
@@ -24,7 +26,7 @@ async function getDefaultConfigFiles(): Promise<string[]> {
     for (const file of defaultConfigFiles) {
         const filePath = path.join(CONFIG_DIR, file);
         try {
-            if ((await Deno.stat(filePath)).isFile) {
+            if ((await stat(filePath)).isFile()) {
                 foundFiles.push(file);
             }
         } catch (_err) {
@@ -44,7 +46,7 @@ async function findConfigFile(name: string): Promise<Result<string, string>> {
     if (basename === name) {  // no path component 
         // Look in current directory first, then in ./config
         try {
-            if ((await Deno.stat(name)).isFile) {
+            if ((await stat(name)).isFile()) {
                 return success(name);
             }
         } catch (_err) {
@@ -53,7 +55,7 @@ async function findConfigFile(name: string): Promise<Result<string, string>> {
 
         try {
             const configPath = path.join('config', name);
-            if ((await Deno.stat(configPath)).isFile) {
+            if ((await stat(configPath)).isFile()) {
                 return success(configPath);
             }
         } catch (_err) {
@@ -64,7 +66,7 @@ async function findConfigFile(name: string): Promise<Result<string, string>> {
   
     // Name includes a path, so look there
     try {
-        if ((await Deno.stat(name)).isFile) {
+        if ((await stat(name)).isFile()) {
             return success(name);
         } 
     } catch (_err) {
@@ -119,7 +121,7 @@ class EnvVariableReplacer implements Replacer {
      * @throws Error if the environment variable is not defined.
      */
     replace(variableName: string): Promise<string> {
-        const result = Deno.env.get(variableName);
+        const result = process.env[variableName];
         if (!result) {
             throw new Error(`Environment variable ${variableName} is not defined`);
         }
@@ -254,7 +256,7 @@ export class ConfigManager<S extends TSchema = TSchema> {
             if (result.success) {
                 try {
                     const filePath = result.value;
-                    const content = await Deno.readTextFile(filePath);
+                    const content = await readFile(filePath, 'utf-8');
                     const config = JSON5.parse(content) as TConfig;
                     this.#configs.push(config);
                 } catch (err) {

@@ -3,6 +3,7 @@
  */
 
 import { assert, assertEquals, assertExists, assertThrows } from '@std/assert';
+import process from 'node:process';
 import { Type } from 'typebox';
 import {
 	combineSections,
@@ -11,6 +12,7 @@ import {
 	displayHelp,
 	displayVersion,
 	getStandardOptions,
+	getRuntimeEnvironment,
 	getPalette,
 	setPalette,
 	processCommands,
@@ -19,24 +21,24 @@ import {
 	type ParseOptions,
 } from '../src/cli.ts';
 
-function withDenoArgs(args: string[], fn: () => void) {
-	const descriptor = Object.getOwnPropertyDescriptor(Deno, 'args');
-	Object.defineProperty(Deno, 'args', {
+function withProcessArgs(args: string[], fn: () => void) {
+	const descriptor = Object.getOwnPropertyDescriptor(process, 'argv');
+	Object.defineProperty(process, 'argv', {
 		configurable: true,
-		value: args,
+		value: ['node', 'app.js', ...args],
 	});
 	try {
 		fn();
 	} finally {
 		if (descriptor) {
-			Object.defineProperty(Deno, 'args', descriptor);
+			Object.defineProperty(process, 'argv', descriptor);
 		}
 	}
 }
 
-function withDenoExitStub(stub: (code?: number) => never, fn: () => void) {
-	const descriptor = Object.getOwnPropertyDescriptor(Deno, 'exit');
-	Object.defineProperty(Deno, 'exit', {
+function withProcessExitStub(stub: (code?: number) => never, fn: () => void) {
+	const descriptor = Object.getOwnPropertyDescriptor(process, 'exit');
+	Object.defineProperty(process, 'exit', {
 		configurable: true,
 		value: stub,
 	});
@@ -44,7 +46,7 @@ function withDenoExitStub(stub: (code?: number) => never, fn: () => void) {
 		fn();
 	} finally {
 		if (descriptor) {
-			Object.defineProperty(Deno, 'exit', descriptor);
+			Object.defineProperty(process, 'exit', descriptor);
 		}
 	}
 }
@@ -107,11 +109,26 @@ Deno.test('getStandardOptions: returns expected aliases and help lines', () => {
 });
 
 Deno.test('createIntro: uses explicit intro and usage when provided', () => {
-	const intro = createIntro('Test intro', 'deno run app.ts [OPTIONS]');
+	const intro = createIntro('Test intro', 'node app.js [OPTIONS]');
 
 	assertEquals(intro.lines.length, 2);
 	assertEquals(intro.lines[0].column1, 'Test intro');
-	assertEquals(intro.lines[1].column1, '\n%cUsage: %cdeno run app.ts [OPTIONS]');
+	assertEquals(intro.lines[1].column1, '\n%cUsage: %cnode app.js [OPTIONS]');
+});
+
+Deno.test('getRuntimeEnvironment: returns deno when running in Deno tests', () => {
+	assertEquals(getRuntimeEnvironment(), 'deno');
+});
+
+Deno.test('createIntro: default usage reflects runtime environment', () => {
+	const intro = createIntro('Runtime intro');
+	const runtime = getRuntimeEnvironment();
+	const expectedPrefix = runtime === 'deno' ? '\n%cUsage: %cdeno ' : '\n%cUsage: %cnode ';
+
+	assertEquals(intro.lines.length, 2);
+	assertEquals(intro.lines[0].column1, 'Runtime intro');
+	assert((intro.lines[1].column1 as string).startsWith(expectedPrefix));
+	assert((intro.lines[1].column1 as string).endsWith(' [OPTIONS]'));
 });
 
 Deno.test('combineSections: merges lines and parse options', () => {
@@ -204,7 +221,7 @@ Deno.test('processCommands: returns config files and additional config', () => {
 		},
 	};
 
-	withDenoArgs(['--config', 'a.json5', '--config', 'b.json5', '--name', 'agent', '--feature'], () => {
+	withProcessArgs(['--config', 'a.json5', '--config', 'b.json5', '--name', 'agent', '--feature'], () => {
 		const result = processCommands(cliData);
 		assertEquals(result.success, true);
 		if (result.success) {
@@ -227,7 +244,7 @@ Deno.test('processCommands: returns failure for non-string config entries', () =
 		},
 	};
 
-	withDenoArgs(['--config'], () => {
+	withProcessArgs(['--config'], () => {
 		const result = processCommands(cliData);
 		assertEquals(result.success, false);
 		if (!result.success) {
@@ -249,8 +266,8 @@ Deno.test('processCommands: triggers displayVersion and exits when --version is 
 		},
 	};
 
-	withDenoArgs(['--version'], () => {
-		withDenoExitStub((code?: number): never => {
+	withProcessArgs(['--version'], () => {
+		withProcessExitStub((code?: number): never => {
 			throw new Error(`exit:${code ?? ''}`);
 		}, () => {
 			withConsoleLogCapture(() => {
@@ -273,8 +290,8 @@ Deno.test('processCommands: triggers displayHelp and exits when --help is presen
 		},
 	};
 
-	withDenoArgs(['--help'], () => {
-		withDenoExitStub((code?: number): never => {
+	withProcessArgs(['--help'], () => {
+		withProcessExitStub((code?: number): never => {
 			throw new Error(`exit:${code ?? ''}`);
 		}, () => {
 			withConsoleLogCapture((calls) => {
