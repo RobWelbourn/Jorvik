@@ -4,7 +4,7 @@
 
 import { assertEquals, assertExists, assert } from '@std/assert';
 import { ConfigManager } from '../src/configmgr.ts';
-import { type Result } from '../src/result.ts';
+import type { Result } from '../src/result.ts';
 import { Type } from 'typebox';
 
 class MockReplacer {
