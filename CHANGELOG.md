@@ -6,6 +6,7 @@
 of config files, and an optional environment variable replacer.
 - Modified `load()` method to return a `Result` containing the validated config if success, 
 or an array of strings describing errors if failure.
+
 ### Removed
 - Removed `getConfig()` and `getValidatedConfig()` -- use `load()` instead.
 - Removed `hasErrors()` and `getErrors()` -- returned in `Result` from `load()` instead.
