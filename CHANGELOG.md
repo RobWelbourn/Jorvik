@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 - 2026-03-24
+### Changed
+- Fix Deno compatibiity issues.
+
 ## 0.3.0 - 2026-03-24
 ### Changed
 - Refactored codebase to run under Node.js.
