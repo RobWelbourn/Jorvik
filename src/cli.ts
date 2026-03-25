@@ -12,12 +12,30 @@ import type * as typebox from 'typebox';
 import { type Result, failure, success } from './result.ts';
 import type { TConfig } from './configmgr.ts';
 
-const require = createRequire(import.meta.url);
-const meta = require('../deno.json') as {
-    name?: string;
-    version?: string;
-    description?: string;
-};
+const meta = (() => {
+    const emptyMeta: {
+        name?: string;
+        version?: string;
+        description?: string;
+    } = {};
+
+    // createRequire only supports file:// URLs. Deno can load modules from http(s),
+    // so skip package metadata loading in that case and use runtime fallbacks.
+    if (!import.meta.url.startsWith('file:')) {
+        return emptyMeta;
+    }
+
+    try {
+        const require = createRequire(import.meta.url);
+        return require('../deno.json') as {
+            name?: string;
+            version?: string;
+            description?: string;
+        };
+    } catch {
+        return emptyMeta;
+    }
+})();
 
 /** Simplified version of TypeBox's TSchema, containing only fields relevant for CLI generation. */
 type TSchema = {
