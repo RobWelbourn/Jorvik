@@ -7,7 +7,8 @@
 import * as path from 'node:path';
 import { createRequire } from 'node:module';
 import process from 'node:process';
-import { parseArgs as parseNodeArgs } from 'node:util';
+// @deno-types="npm:@types/minimist@^1.2.5"
+import minimist from 'minimist';
 import type * as typebox from 'typebox';
 import { type Result, failure, success } from './result.ts';
 import type { TConfig } from './configmgr.ts';
@@ -148,57 +149,33 @@ export function getRuntimeEnvironment(): 'deno' | 'node' {
     return typeof globalThis.Deno !== 'undefined' ? 'deno' : 'node';
 }
 
+/**
+ * Use minimist to parse CLI arguments.
+ * @param argv Command line arguments.
+ * @param parseOptions Options for parsing CLI arguments.
+ * @returns 
+ */
 function parseCliArgs(argv: string[], parseOptions?: ParseOptions): Record<string, unknown> {
-    const options: Record<string, {
-        type: 'boolean' | 'string';
-        multiple?: boolean;
-        short?: string;
-    }> = {};
-
-    const ensureOption = (name: string, type: 'boolean' | 'string', multiple = false) => {
-        const existing = options[name];
-        if (!existing) {
-            options[name] = { type, multiple };
-            return;
-        }
-        if (existing.type !== type) {
-            return;
-        }
-        if (multiple) {
-            existing.multiple = true;
-        }
-    };
-
-    if (parseOptions) {
-        for (const name of parseOptions.boolean) {
-            ensureOption(name, 'boolean');
-        }
-        for (const name of parseOptions.negatable) {
-            ensureOption(name, 'boolean');
-        }
-        for (const name of parseOptions.string) {
-            ensureOption(name, 'string');
-        }
-        for (const name of parseOptions.collect) {
-            ensureOption(name, 'string', true);
-        }
-
-        for (const [longName, shortName] of Object.entries(parseOptions.alias)) {
-            if (longName in options && shortName.length === 1) {
-                options[longName].short = shortName;
-            }
-        }
-    }
-
-    const parsed = parseNodeArgs({
-        args: argv,
-        options,
-        strict: false,
-        allowPositionals: true,
-        allowNegative: true,
+    const parsed = minimist(argv, {
+        boolean: [
+            ...(parseOptions?.boolean ?? []),
+            ...(parseOptions?.negatable ?? []),
+        ],
+        string: parseOptions?.string ?? [],
+        default: parseOptions?.default ?? {},
+        alias: parseOptions?.alias ?? {},
     });
 
-    return parsed.values as Record<string, unknown>;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { _: _positional, '--': _doubleDash, ...result } = parsed as Record<string, unknown> & { _: unknown[]; '--'?: unknown[] };
+
+    // minimist adds both canonical and alias keys; remove the alias short-names so that
+    // only canonical names are returned (mirrors the behaviour of node:util parseArgs).
+    for (const shortName of Object.values(parseOptions?.alias ?? {})) {
+        delete result[shortName];
+    }
+
+    return result;
 }
 
 /**

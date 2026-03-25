@@ -303,6 +303,166 @@ Deno.test('processCommands: triggers displayHelp and exits when --help is presen
 	});
 });
 
+Deno.test('processCommands: triggers displayVersion and exits when -v is present', () => {
+	const cliData: CliData = {
+		lines: [{ column1: 'help' }],
+		parseOptions: {
+			boolean: ['help', 'version'],
+			negatable: [],
+			string: ['config'],
+			collect: ['config'],
+			default: {},
+			alias: { help: 'h', version: 'v', config: 'c' },
+		},
+	};
+
+	withProcessArgs(['-v'], () => {
+		withProcessExitStub((code?: number): never => {
+			throw new Error(`exit:${code ?? ''}`);
+		}, () => {
+			withConsoleLogCapture(() => {
+				assertThrows(() => processCommands(cliData), Error, 'exit:0');
+			});
+		});
+	});
+});
+
+Deno.test('processCommands: triggers displayHelp and exits when -h is present', () => {
+	const cliData: CliData = {
+		lines: [{ column1: 'Usage line' }],
+		parseOptions: {
+			boolean: ['help', 'version'],
+			negatable: [],
+			string: ['config'],
+			collect: ['config'],
+			default: {},
+			alias: { help: 'h', version: 'v', config: 'c' },
+		},
+	};
+
+	withProcessArgs(['-h'], () => {
+		withProcessExitStub((code?: number): never => {
+			throw new Error(`exit:${code ?? ''}`);
+		}, () => {
+			withConsoleLogCapture((calls) => {
+				assertThrows(() => processCommands(cliData), Error, 'exit:0');
+				assertEquals(calls.length, 1);
+				assertEquals(calls[0][0], 'Usage line');
+			});
+		});
+	});
+});
+
+Deno.test('processCommands: returns config files with long form --config', () => {
+	const cliData: CliData = {
+		lines: [{ column1: 'help' }],
+		parseOptions: {
+			boolean: ['help', 'version'],
+			negatable: [],
+			string: ['config'],
+			collect: ['config'],
+			default: {},
+			alias: { help: 'h', version: 'v', config: 'c' },
+		},
+	};
+
+	withProcessArgs(['--config', 'test.json5'], () => {
+		const result = processCommands(cliData);
+		assertEquals(result.success, true);
+		if (result.success) {
+			assertEquals(result.value.configFiles, ['test.json5']);
+		}
+	});
+});
+
+Deno.test('processCommands: returns config files with short form -c', () => {
+	const cliData: CliData = {
+		lines: [{ column1: 'help' }],
+		parseOptions: {
+			boolean: ['help', 'version'],
+			negatable: [],
+			string: ['config'],
+			collect: ['config'],
+			default: {},
+			alias: { help: 'h', version: 'v', config: 'c' },
+		},
+	};
+
+	withProcessArgs(['-c', 'test.json5'], () => {
+		const result = processCommands(cliData);
+		assertEquals(result.success, true);
+		if (result.success) {
+			assertEquals(result.value.configFiles, ['test.json5']);
+		}
+	});
+});
+
+Deno.test('processCommands: returns multiple config files with long form --config', () => {
+	const cliData: CliData = {
+		lines: [{ column1: 'help' }],
+		parseOptions: {
+			boolean: ['help', 'version'],
+			negatable: [],
+			string: ['config'],
+			collect: ['config'],
+			default: {},
+			alias: { help: 'h', version: 'v', config: 'c' },
+		},
+	};
+
+	withProcessArgs(['--config', 'a.json5', '--config', 'b.json5'], () => {
+		const result = processCommands(cliData);
+		assertEquals(result.success, true);
+		if (result.success) {
+			assertEquals(result.value.configFiles, ['a.json5', 'b.json5']);
+		}
+	});
+});
+
+Deno.test('processCommands: returns multiple config files with short form -c', () => {
+	const cliData: CliData = {
+		lines: [{ column1: 'help' }],
+		parseOptions: {
+			boolean: ['help', 'version'],
+			negatable: [],
+			string: ['config'],
+			collect: ['config'],
+			default: {},
+			alias: { help: 'h', version: 'v', config: 'c' },
+		},
+	};
+
+	withProcessArgs(['-c', 'a.json5', '-c', 'b.json5'], () => {
+		const result = processCommands(cliData);
+		assertEquals(result.success, true);
+		if (result.success) {
+			assertEquals(result.value.configFiles, ['a.json5', 'b.json5']);
+		}
+	});
+});
+
+Deno.test('processCommands: returns mixed config files using both long and short forms', () => {
+	const cliData: CliData = {
+		lines: [{ column1: 'help' }],
+		parseOptions: {
+			boolean: ['help', 'version'],
+			negatable: [],
+			string: ['config'],
+			collect: ['config'],
+			default: {},
+			alias: { help: 'h', version: 'v', config: 'c' },
+		},
+	};
+
+	withProcessArgs(['--config', 'a.json5', '-c', 'b.json5'], () => {
+		const result = processCommands(cliData);
+		assertEquals(result.success, true);
+		if (result.success) {
+			assertEquals(result.value.configFiles, ['a.json5', 'b.json5']);
+		}
+	});
+});
+
 Deno.test('getPalette: returns default palette with expected keys', () => {
 	const palette = getPalette();
 	
