@@ -18,7 +18,6 @@ import {
 	processCommands,
 	type CliData,
 	type Palette,
-	type ParseOptions,
 } from '../src/cli.ts';
 
 function withProcessArgs(args: string[], fn: () => void) {
@@ -78,7 +77,6 @@ Deno.test('compileSection: collects option lines and parse metadata', () => {
 
 	const compiled = compileSection(undefined, schema);
 	const lines = compiled.lines;
-	const parseOptions = compiled.parseOptions as ParseOptions;
 
 	assert(lines.some(line => line.column1 === '\n%cService options'));
 	assert(lines.some(line => line.column1 === 'Service configuration'));
