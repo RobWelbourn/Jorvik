@@ -91,9 +91,6 @@ Deno.test('compileSection: collects option lines and parse metadata', () => {
 	assertExists(modeLine.column2);
 	assert(modeLine.column2.includes('options: %cfast safe%c'));
 	assert(modeLine.column2.includes('default: %csafe%c'));
-
-	assertEquals(parseOptions.negatable, ['service.enabled']);
-	assertEquals(parseOptions.collect, ['service.tags']);
 });
 
 Deno.test('getStandardOptions: returns expected aliases and help lines', () => {
@@ -101,7 +98,6 @@ Deno.test('getStandardOptions: returns expected aliases and help lines', () => {
 
 	assertEquals(standard.parseOptions?.boolean, ['help', 'version']);
 	assertEquals(standard.parseOptions?.string, ['config', 'c']);
-	assertEquals(standard.parseOptions?.collect, ['config', 'c']);
 	assertEquals(standard.parseOptions?.alias, { help: 'h', version: 'v', config: 'c' });
 	assert(standard.lines.some(line => line.column1.includes('--help, -h')));
 	assert(standard.lines.some(line => line.column1.includes('--version, -v')));
@@ -136,9 +132,7 @@ Deno.test('combineSections: merges lines and parse options', () => {
 		lines: [{ column1: 'A1' }],
 		parseOptions: {
 			boolean: ['help'],
-			negatable: ['enabled'],
 			string: [],
-			collect: ['config'],
 			default: { enabled: true },
 			alias: { help: 'h' },
 		},
@@ -147,9 +141,7 @@ Deno.test('combineSections: merges lines and parse options', () => {
 		lines: [{ column1: 'B1' }],
 		parseOptions: {
 			boolean: ['version'],
-			negatable: ['feature'],
 			string: [],
-			collect: ['tag'],
 			default: { retries: 2 },
 			alias: { version: 'v' },
 		},
@@ -159,8 +151,6 @@ Deno.test('combineSections: merges lines and parse options', () => {
 
 	assertEquals(combined.lines.map(l => l.column1), ['A1', 'B1']);
 	assertEquals(combined.parseOptions?.boolean, ['help', 'version']);
-	assertEquals(combined.parseOptions?.negatable, ['enabled', 'feature']);
-	assertEquals(combined.parseOptions?.collect, ['config', 'tag']);
 	assertEquals(combined.parseOptions?.default, { enabled: true, retries: 2 });
 	assertEquals(combined.parseOptions?.alias, { help: 'h', version: 'v' });
 });
@@ -213,9 +203,7 @@ Deno.test('processCommands: returns config files and additional config', () => {
 		lines: [{ column1: 'help' }],
 		parseOptions: {
 			boolean: ['help', 'version'],
-			negatable: ['feature'],
 			string: ['config', 'name'],
-			collect: ['config'],
 			default: {},
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
@@ -236,9 +224,7 @@ Deno.test('processCommands: returns failure for non-string config entries', () =
 		lines: [{ column1: 'help' }],
 		parseOptions: {
 			boolean: ['help', 'version'],
-			negatable: [],
 			string: [],
-			collect: ['config'],
 			default: {},
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
@@ -258,9 +244,7 @@ Deno.test('processCommands: triggers displayVersion and exits when --version is 
 		lines: [{ column1: 'help' }],
 		parseOptions: {
 			boolean: ['help', 'version'],
-			negatable: [],
 			string: ['config'],
-			collect: ['config'],
 			default: {},
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
@@ -282,9 +266,7 @@ Deno.test('processCommands: triggers displayHelp and exits when --help is presen
 		lines: [{ column1: 'Usage line' }],
 		parseOptions: {
 			boolean: ['help', 'version'],
-			negatable: [],
 			string: ['config'],
-			collect: ['config'],
 			default: {},
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
@@ -308,9 +290,7 @@ Deno.test('processCommands: triggers displayVersion and exits when -v is present
 		lines: [{ column1: 'help' }],
 		parseOptions: {
 			boolean: ['help', 'version'],
-			negatable: [],
 			string: ['config'],
-			collect: ['config'],
 			default: {},
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
@@ -332,9 +312,7 @@ Deno.test('processCommands: triggers displayHelp and exits when -h is present', 
 		lines: [{ column1: 'Usage line' }],
 		parseOptions: {
 			boolean: ['help', 'version'],
-			negatable: [],
 			string: ['config'],
-			collect: ['config'],
 			default: {},
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
@@ -358,9 +336,7 @@ Deno.test('processCommands: returns config files with long form --config', () =>
 		lines: [{ column1: 'help' }],
 		parseOptions: {
 			boolean: ['help', 'version'],
-			negatable: [],
 			string: ['config'],
-			collect: ['config'],
 			default: {},
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
@@ -380,9 +356,7 @@ Deno.test('processCommands: returns config files with short form -c', () => {
 		lines: [{ column1: 'help' }],
 		parseOptions: {
 			boolean: ['help', 'version'],
-			negatable: [],
 			string: ['config'],
-			collect: ['config'],
 			default: {},
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
@@ -402,9 +376,7 @@ Deno.test('processCommands: returns multiple config files with long form --confi
 		lines: [{ column1: 'help' }],
 		parseOptions: {
 			boolean: ['help', 'version'],
-			negatable: [],
 			string: ['config'],
-			collect: ['config'],
 			default: {},
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
@@ -424,9 +396,7 @@ Deno.test('processCommands: returns multiple config files with short form -c', (
 		lines: [{ column1: 'help' }],
 		parseOptions: {
 			boolean: ['help', 'version'],
-			negatable: [],
 			string: ['config'],
-			collect: ['config'],
 			default: {},
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
@@ -446,9 +416,7 @@ Deno.test('processCommands: returns mixed config files using both long and short
 		lines: [{ column1: 'help' }],
 		parseOptions: {
 			boolean: ['help', 'version'],
-			negatable: [],
 			string: ['config'],
-			collect: ['config'],
 			default: {},
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},

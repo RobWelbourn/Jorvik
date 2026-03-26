@@ -1,8 +1,9 @@
 /**
  * @module cli
  * Functions for creating a CLI from a TypeBox schema.  Standard options for help, version and
- * config file names are included, and additional options are created from the 'title' and 'description' metadata
- * in the schema.  The CLI is displayed with aligned columns and color formatting.
+ * config file names are included, and additional options are created from the 'title' and 'description' 
+ * metadata in the schema.  The CLI is displayed with aligned columns and color formatting.
+ * CLI parsing uses the [minimist](https://www.npmjs.com/package/minimist) package.
  */
 import * as path from 'node:path';
 import { createRequire } from 'node:module';
@@ -116,20 +117,16 @@ export type CliData = {
     parseOptions?: ParseOptions;
 };
 
-/** Compatible subset of CLI ParseOptions. */
+/** minimist-compatible subset of CLI ParseOptions. */
 export type ParseOptions = {
-    /** Array of boolean options; not used */
-    boolean: string[];
-    /** Array of boolean options that can be negated with --no- prefix */
-    negatable: string[];
-    /** Array of string and numeric options; not used */
-    string: string[];
-    /** Array of options of which there can be multiple instances */
-    collect: string[];
-    /** Options with default values; not used */
-    default: { [key: string]: string | number | boolean };
+    /** Array of boolean options */
+    boolean?: string[];
+    /** Array of string options */
+    string?: string[];
+    /** Options with default values */
+    default?: { [key: string]: string | number | boolean };
     /** Option aliases */
-    alias: { [key: string]: string };
+    alias?: { [key: string]: string };
 };
 
 /**
@@ -156,15 +153,7 @@ export function getRuntimeEnvironment(): 'deno' | 'node' {
  * @returns 
  */
 function parseCliArgs(argv: string[], parseOptions?: ParseOptions): Record<string, unknown> {
-    const parsed = minimist(argv, {
-        boolean: [
-            ...(parseOptions?.boolean ?? []),
-            ...(parseOptions?.negatable ?? []),
-        ],
-        string: parseOptions?.string ?? [],
-        default: parseOptions?.default ?? {},
-        alias: parseOptions?.alias ?? {},
-    });
+    const parsed = minimist(argv, parseOptions);
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { _: _positional, '--': _doubleDash, ...result } = parsed as Record<string, unknown> & { _: unknown[]; '--'?: unknown[] };
@@ -188,14 +177,6 @@ function parseCliArgs(argv: string[], parseOptions?: ParseOptions): Record<strin
  */
 export function compileSection(section: string | undefined, schema: typebox.TSchema): CliData {
     const lines: Line[] = [];
-    const parseOptions: ParseOptions = {
-        boolean: [],
-        negatable: [],
-        string: [],
-        collect: [],
-        default: {},
-        alias: {},
-    };
 
     // Helper function to add a CLI option line for a schema property that has a description.
     function annotateOption(option: string, prop: TSchema) {
@@ -203,11 +184,6 @@ export function compileSection(section: string | undefined, schema: typebox.TSch
         if (prop.type === 'object' && prop.description) {
             lines.push({ column1: prop.description });
             return;
-        }
-
-        // For boolean options, add to the negatable list so that they can be negated with --no- prefix.
-        if (prop.type === 'boolean') {
-            parseOptions.negatable.push(option);
         }
 
         const column1 = `  %c--${option}`;
@@ -254,7 +230,6 @@ export function compileSection(section: string | undefined, schema: typebox.TSch
                 if (prop.items) { // 'items' indicates an array
                     if (prop.items.description) {
                         annotateOption(nextSection, prop.items);
-                        parseOptions.collect.push(nextSection); // multiple values allowed
                     }
                     traverseSchema(nextSection, prop.items);
                 } else {
@@ -268,7 +243,7 @@ export function compileSection(section: string | undefined, schema: typebox.TSch
     }
 
     traverseSchema(section, schema as unknown as TSchema); // Coerce to our simplified TSchema type
-    return { lines, parseOptions };
+    return { lines };
 }
 
 /**
@@ -278,9 +253,7 @@ export function compileSection(section: string | undefined, schema: typebox.TSch
 export function getStandardOptions(): CliData {
     const parseOptions: ParseOptions = {
         boolean: ['help', 'version'],
-        negatable: [],
         string: ['config', 'c'],
-        collect: ['config', 'c'],
         default: {},
         alias: { help: 'h', version: 'v', config: 'c' },
     };
@@ -352,9 +325,7 @@ export function combineSections(cliSections: CliData[]): CliData {
     const lines: Line[] = [];
     const parseOptions: ParseOptions = {
         boolean: [],
-        negatable: [],
         string: [],
-        collect: [],
         default: {},
         alias: {},
     };
@@ -362,11 +333,18 @@ export function combineSections(cliSections: CliData[]): CliData {
     for (const cliSection of cliSections) {
         lines.push(...cliSection.lines);
         if (cliSection.parseOptions) {
-            parseOptions.boolean.push(...cliSection.parseOptions.boolean);
-            parseOptions.negatable.push(...cliSection.parseOptions.negatable);
-            parseOptions.collect.push(...cliSection.parseOptions.collect);
-            Object.assign(parseOptions.default, cliSection.parseOptions.default);
-            Object.assign(parseOptions.alias, cliSection.parseOptions.alias);
+            if (cliSection.parseOptions.boolean) {
+                parseOptions.boolean?.push(...cliSection.parseOptions.boolean);
+            }
+            if (cliSection.parseOptions.string) {
+                parseOptions.string?.push(...cliSection.parseOptions.string);
+            }
+            if (cliSection.parseOptions.default && parseOptions.default) {
+                Object.assign(parseOptions.default, cliSection.parseOptions.default);
+            }
+            if (cliSection.parseOptions.alias && parseOptions.alias) {
+                Object.assign(parseOptions.alias, cliSection.parseOptions.alias);
+            }
         }
     }
 
