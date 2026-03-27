@@ -3,16 +3,14 @@
  * Functions for creating a CLI from a TypeBox schema.  Standard options for help, version and
  * config file names are included, and additional options are created from the 'title' and 'description' 
  * metadata in the schema.  The CLI is displayed with aligned columns and color formatting.
- * CLI parsing uses the [minimist](https://www.npmjs.com/package/minimist) package.
  */
 import * as path from 'node:path';
 import { createRequire } from 'node:module';
 import process from 'node:process';
-// @deno-types="npm:@types/minimist@^1.2.5"
-import minimist from 'minimist';
 import type * as typebox from 'typebox';
 import { type Result, failure, success } from './result.ts';
 import type { TConfig } from './configmgr.ts';
+import { type ParseOptions, parseArgs } from './parseargs.ts';
 
 const meta = (() => {
     const emptyMeta: {
@@ -117,18 +115,6 @@ export type CliData = {
     parseOptions?: ParseOptions;
 };
 
-/** minimist-compatible subset of CLI ParseOptions. */
-export type ParseOptions = {
-    /** Array of boolean options */
-    boolean?: string[];
-    /** Array of string options */
-    string?: string[];
-    /** Options with default values */
-    default?: { [key: string]: string | number | boolean };
-    /** Option aliases */
-    alias?: { [key: string]: string };
-};
-
 /**
  * Utility function to get the short form of the program entry point.
  * @returns The module name.
@@ -147,36 +133,18 @@ export function getRuntimeEnvironment(): 'deno' | 'node' {
 }
 
 /**
- * Use minimist to parse CLI arguments.
- * @param argv Command line arguments.
- * @param parseOptions Options for parsing CLI arguments.
- * @returns 
- */
-function parseCliArgs(argv: string[], parseOptions?: ParseOptions): Record<string, unknown> {
-    const parsed = minimist(argv, parseOptions);
-
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { _: _positional, '--': _doubleDash, ...result } = parsed as Record<string, unknown> & { _: unknown[]; '--'?: unknown[] };
-
-    // minimist adds both canonical and alias keys; remove the alias short-names so that
-    // only canonical names are returned (mirrors the behaviour of node:util parseArgs).
-    for (const shortName of Object.values(parseOptions?.alias ?? {})) {
-        delete result[shortName];
-    }
-
-    return result;
-}
-
-/**
  * Traverses the provided TypeBox schema and compiles CLI help text and parsing options
- * based on the schema's properties and their descriptions.
- * @param section The section name to prefix CLI options with (e.g. 'status' for --status.enabled).
- * If the section is empty or undefined, options will be top-level (e.g. --enabled).
- * @param schema The schema.
+ * based on the schema's properties and their descriptions.  The schema is expected to be
+ * a top-level object schema whose property names become the CLI flag prefixes
+ * (e.g. a property `service` produces options such as `--service.enabled`).
+ * @param schema The top-level schema.
  * @returns The compiled CLI data.
  */
-export function compileSection(section: string | undefined, schema: typebox.TSchema): CliData {
+export function compileSection(schema: typebox.TSchema): CliData {
     const lines: Line[] = [];
+    const parseOptions = {
+        collect: [] as string[],
+    };
 
     // Helper function to add a CLI option line for a schema property that has a description.
     function annotateOption(option: string, prop: TSchema) {
@@ -226,24 +194,25 @@ export function compileSection(section: string | undefined, schema: typebox.TSch
                     });
                 }
 
-                const nextSection = section ? `${section}.${key}` : key;
+                const subsection = section ? `${section}.${key}` : key;
                 if (prop.items) { // 'items' indicates an array
                     if (prop.items.description) {
-                        annotateOption(nextSection, prop.items);
+                        annotateOption(subsection, prop.items);
                     }
-                    traverseSchema(nextSection, prop.items);
+                    parseOptions.collect.push(subsection);
+                    traverseSchema(subsection, prop.items);
                 } else {
                     if (prop.description) {
-                        annotateOption(nextSection, prop);
+                        annotateOption(subsection, prop);
                     }
-                    traverseSchema(nextSection, prop);
+                    traverseSchema(subsection, prop);
                 }
             }
         }
     }
 
-    traverseSchema(section, schema as unknown as TSchema); // Coerce to our simplified TSchema type
-    return { lines };
+    traverseSchema(undefined, schema as unknown as TSchema); // Coerce to our simplified TSchema type
+    return { lines, parseOptions };
 }
 
 /**
@@ -252,9 +221,7 @@ export function compileSection(section: string | undefined, schema: typebox.TSch
  */
 export function getStandardOptions(): CliData {
     const parseOptions: ParseOptions = {
-        boolean: ['help', 'version'],
-        string: ['config', 'c'],
-        default: {},
+        collect: ['config'],
         alias: { help: 'h', version: 'v', config: 'c' },
     };
 
@@ -323,27 +290,19 @@ export function createIntro(intro?: string, usage?: string): CliData {
  */
 export function combineSections(cliSections: CliData[]): CliData {
     const lines: Line[] = [];
-    const parseOptions: ParseOptions = {
-        boolean: [],
-        string: [],
-        default: {},
-        alias: {},
+    const parseOptions = {
+        collect: [] as string[],
+        alias: {} as Record<string, string>,
     };
 
     for (const cliSection of cliSections) {
         lines.push(...cliSection.lines);
         if (cliSection.parseOptions) {
-            if (cliSection.parseOptions.boolean) {
-                parseOptions.boolean?.push(...cliSection.parseOptions.boolean);
-            }
-            if (cliSection.parseOptions.string) {
-                parseOptions.string?.push(...cliSection.parseOptions.string);
-            }
-            if (cliSection.parseOptions.default && parseOptions.default) {
-                Object.assign(parseOptions.default, cliSection.parseOptions.default);
-            }
-            if (cliSection.parseOptions.alias && parseOptions.alias) {
+            if (cliSection.parseOptions.alias) {
                 Object.assign(parseOptions.alias, cliSection.parseOptions.alias);
+            }
+            if (cliSection.parseOptions.collect) {
+                parseOptions.collect.push(...cliSection.parseOptions.collect);
             }
         }
     }
@@ -433,10 +392,10 @@ export function processCommands(cliData: CliData): Result<{
     configFiles: string[];
     additionalConfig: TConfig | undefined;
 }, string> {
-    const args = parseCliArgs(process.argv.slice(2), cliData.parseOptions);
+    const args = parseArgs(process.argv.slice(2), cliData.parseOptions);
 
     // Remove standard options from the args object, leaving only those from the config schema. 
-    const { help, version, config, ...configArgs } = args;
+    const { _, help, version, config, ...configArgs } = args;
 
     if (version) {
         displayVersion();
@@ -448,18 +407,13 @@ export function processCommands(cliData: CliData): Result<{
         process.exit(0);
     }
 
-    const rawConfig = config;
     let configFiles: string[] = [];
 
-    if (Array.isArray(rawConfig)) {
-        if (rawConfig.some((item) => typeof item !== 'string')) {
+    if (Array.isArray(config)) {
+        if (config.some((item) => typeof item !== 'string')) {
             return failure('Config filenames must be strings');
         }
-        configFiles = rawConfig;
-    } else if (typeof rawConfig === 'string') {
-        configFiles = [rawConfig];
-    } else if (rawConfig !== undefined) {
-        return failure('Config filenames must be strings');
+        configFiles = config as string[];
     }
 
     // Look for any supplemental configuration options from the CLI. Remove any options with

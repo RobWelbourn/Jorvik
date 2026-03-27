@@ -75,7 +75,7 @@ Deno.test('compileSection: collects option lines and parse metadata', () => {
 		})
 	});
 
-	const compiled = compileSection(undefined, schema);
+	const compiled = compileSection(schema);
 	const lines = compiled.lines;
 
 	assert(lines.some(line => line.column1 === '\n%cService options'));
@@ -91,11 +91,10 @@ Deno.test('compileSection: collects option lines and parse metadata', () => {
 	assert(modeLine.column2.includes('default: %csafe%c'));
 });
 
-Deno.test('getStandardOptions: returns expected aliases and help lines', () => {
+Deno.test('getStandardOptions: returns expected aliases, collect and help lines', () => {
 	const standard = getStandardOptions();
 
-	assertEquals(standard.parseOptions?.boolean, ['help', 'version']);
-	assertEquals(standard.parseOptions?.string, ['config', 'c']);
+	assertEquals(standard.parseOptions?.collect, ['config']);
 	assertEquals(standard.parseOptions?.alias, { help: 'h', version: 'v', config: 'c' });
 	assert(standard.lines.some(line => line.column1.includes('--help, -h')));
 	assert(standard.lines.some(line => line.column1.includes('--version, -v')));
@@ -129,18 +128,14 @@ Deno.test('combineSections: merges lines and parse options', () => {
 	const sectionA: CliData = {
 		lines: [{ column1: 'A1' }],
 		parseOptions: {
-			boolean: ['help'],
-			string: [],
-			default: { enabled: true },
+			collect: ['items'],
 			alias: { help: 'h' },
 		},
 	};
 	const sectionB: CliData = {
 		lines: [{ column1: 'B1' }],
 		parseOptions: {
-			boolean: ['version'],
-			string: [],
-			default: { retries: 2 },
+			collect: ['tags'],
 			alias: { version: 'v' },
 		},
 	};
@@ -148,8 +143,7 @@ Deno.test('combineSections: merges lines and parse options', () => {
 	const combined = combineSections([sectionA, sectionB]);
 
 	assertEquals(combined.lines.map(l => l.column1), ['A1', 'B1']);
-	assertEquals(combined.parseOptions?.boolean, ['help', 'version']);
-	assertEquals(combined.parseOptions?.default, { enabled: true, retries: 2 });
+	assertEquals(combined.parseOptions?.collect, ['items', 'tags']);
 	assertEquals(combined.parseOptions?.alias, { help: 'h', version: 'v' });
 });
 
@@ -200,9 +194,7 @@ Deno.test('processCommands: returns config files and additional config', () => {
 	const cliData: CliData = {
 		lines: [{ column1: 'help' }],
 		parseOptions: {
-			boolean: ['help', 'version'],
-			string: ['config', 'name'],
-			default: {},
+			collect: ['config'],
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
 	};
@@ -221,14 +213,12 @@ Deno.test('processCommands: returns failure for non-string config entries', () =
 	const cliData: CliData = {
 		lines: [{ column1: 'help' }],
 		parseOptions: {
-			boolean: ['help', 'version'],
-			string: [],
-			default: {},
+			collect: ['config'],
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
 	};
 
-	withProcessArgs(['--config'], () => {
+	withProcessArgs(['--config', '42'], () => {
 		const result = processCommands(cliData);
 		assertEquals(result.success, false);
 		if (!result.success) {
@@ -241,9 +231,7 @@ Deno.test('processCommands: triggers displayVersion and exits when --version is 
 	const cliData: CliData = {
 		lines: [{ column1: 'help' }],
 		parseOptions: {
-			boolean: ['help', 'version'],
-			string: ['config'],
-			default: {},
+			collect: ['config'],
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
 	};
@@ -263,9 +251,7 @@ Deno.test('processCommands: triggers displayHelp and exits when --help is presen
 	const cliData: CliData = {
 		lines: [{ column1: 'Usage line' }],
 		parseOptions: {
-			boolean: ['help', 'version'],
-			string: ['config'],
-			default: {},
+			collect: ['config'],
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
 	};
@@ -287,9 +273,7 @@ Deno.test('processCommands: triggers displayVersion and exits when -v is present
 	const cliData: CliData = {
 		lines: [{ column1: 'help' }],
 		parseOptions: {
-			boolean: ['help', 'version'],
-			string: ['config'],
-			default: {},
+			collect: ['config'],
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
 	};
@@ -309,9 +293,7 @@ Deno.test('processCommands: triggers displayHelp and exits when -h is present', 
 	const cliData: CliData = {
 		lines: [{ column1: 'Usage line' }],
 		parseOptions: {
-			boolean: ['help', 'version'],
-			string: ['config'],
-			default: {},
+			collect: ['config'],
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
 	};
@@ -333,9 +315,7 @@ Deno.test('processCommands: returns config files with long form --config', () =>
 	const cliData: CliData = {
 		lines: [{ column1: 'help' }],
 		parseOptions: {
-			boolean: ['help', 'version'],
-			string: ['config'],
-			default: {},
+			collect: ['config'],
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
 	};
@@ -353,9 +333,7 @@ Deno.test('processCommands: returns config files with short form -c', () => {
 	const cliData: CliData = {
 		lines: [{ column1: 'help' }],
 		parseOptions: {
-			boolean: ['help', 'version'],
-			string: ['config'],
-			default: {},
+			collect: ['config'],
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
 	};
@@ -373,9 +351,7 @@ Deno.test('processCommands: returns multiple config files with long form --confi
 	const cliData: CliData = {
 		lines: [{ column1: 'help' }],
 		parseOptions: {
-			boolean: ['help', 'version'],
-			string: ['config'],
-			default: {},
+			collect: ['config'],
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
 	};
@@ -393,9 +369,7 @@ Deno.test('processCommands: returns multiple config files with short form -c', (
 	const cliData: CliData = {
 		lines: [{ column1: 'help' }],
 		parseOptions: {
-			boolean: ['help', 'version'],
-			string: ['config'],
-			default: {},
+			collect: ['config'],
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
 	};
@@ -413,9 +387,7 @@ Deno.test('processCommands: returns mixed config files using both long and short
 	const cliData: CliData = {
 		lines: [{ column1: 'help' }],
 		parseOptions: {
-			boolean: ['help', 'version'],
-			string: ['config'],
-			default: {},
+			collect: ['config'],
 			alias: { help: 'h', version: 'v', config: 'c' },
 		},
 	};
