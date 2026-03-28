@@ -5,37 +5,12 @@
  * metadata in the schema.  The CLI is displayed with aligned columns and color formatting.
  */
 import * as path from 'node:path';
-import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 import process from 'node:process';
 import type * as typebox from 'typebox';
 import { type Result, failure, success } from './result.ts';
 import type { TConfig } from './configmgr.ts';
 import { type ParseOptions, parseArgs } from './parseargs.ts';
-
-const meta = (() => {
-    const emptyMeta: {
-        name?: string;
-        version?: string;
-        description?: string;
-    } = {};
-
-    // createRequire only supports file:// URLs. Deno can load modules from http(s),
-    // so skip package metadata loading in that case and use runtime fallbacks.
-    if (!import.meta.url.startsWith('file:')) {
-        return emptyMeta;
-    }
-
-    try {
-        const require = createRequire(import.meta.url);
-        return require('../deno.json') as {
-            name?: string;
-            version?: string;
-            description?: string;
-        };
-    } catch {
-        return emptyMeta;
-    }
-})();
 
 /** Simplified version of TypeBox's TSchema, containing only fields relevant for CLI generation. */
 type TSchema = {
@@ -107,12 +82,12 @@ export type Line = {
     format?: string | string[];
 };
 
-/** Data structure returned by compileCli, containing lines to display and options for parsing CLI arguments. */
-export type CliData = {
-    /** Array of lines to display. */
-    lines: Line[];
-    /** Options for parsing CLI arguments. */
-    parseOptions?: ParseOptions;
+/** Optional settings for composing the introductory help section. */
+export type HelpOptions = {
+    /** Brief description of what the app does. */
+    intro?: string;
+    /** Usage line, e.g. `deno foo.ts [OPTIONS]`. */
+    usage?: string;
 };
 
 /**
@@ -132,19 +107,107 @@ export function getRuntimeEnvironment(): 'deno' | 'node' {
     return typeof globalThis.Deno !== 'undefined' ? 'deno' : 'node';
 }
 
+/** App metadata taken from either package.json or Deno's import.meta */
+type AppMetadata = {
+    name: string;
+    version: string;
+    description: string;
+};
+
+function getAppMetadata(): AppMetadata {
+    const runtime = getRuntimeEnvironment();
+
+    if (runtime === 'deno') {
+        // In Deno, read from deno.json
+        try {
+            const denoPath = new URL('deno.json', import.meta.url);
+            const denoText = Deno.readTextFileSync(denoPath);
+            const denoConfig = JSON.parse(denoText) as {
+                name?: string;
+                version?: string;
+                description?: string;
+            };
+            return {
+                name: denoConfig.name ?? '[app]',
+                version: denoConfig.version ?? '0.0.0',
+                description: denoConfig.description ?? ''
+            };
+        } catch {
+            return {
+                name: '[app]',
+                version: '0.0.0',
+                description: ''
+            };
+        }
+    } else {
+        // In Node.js, read from package.json
+        try {
+            const moduleDir = path.dirname(new URL(import.meta.url).pathname);
+            const pkgPath = path.join(moduleDir, '../package.json');
+            const pkgContent = readFileSync(pkgPath, 'utf-8');
+            const pkgConfig = JSON.parse(pkgContent) as {
+                name?: string;
+                version?: string;
+                description?: string;
+            };
+            return {
+                name: pkgConfig.name ?? '[app]',
+                version: pkgConfig.version ?? '0.0.0',
+                description: pkgConfig.description ?? ''
+            };
+        } catch {
+            return {
+                name: '[app]',
+                version: '0.0.0',
+                description: ''
+            };
+        }
+    }
+}
+
 /**
- * Traverses the provided TypeBox schema and compiles CLI help text and parsing options
- * based on the schema's properties and their descriptions.  The schema is expected to be
+ * Compiles parse options from a schema by identifying array properties (which can accept 
+ * multiple values) and adding the standard options for help, version, and config files.
+ * @param schema The schema to compile parse options from.
+ * @returns The compiled parse options.
+ */
+function compileParseOptions(schema: typebox.TSchema): ParseOptions {
+    const collect: string[] = [];
+
+    // Helper function that recursively traverses the schema to find array properties.
+    function traverseSchema(section: string | undefined, schema: TSchema): void {
+        if (schema.properties) {
+            for (const [key, prop] of Object.entries(schema.properties)) {
+                const subsection = section ? `${section}.${key}` : key;
+                if (prop.items) { // 'items' indicates an array
+                    collect.push(subsection);
+                    traverseSchema(subsection, prop.items);
+                } else {
+                    traverseSchema(subsection, prop);
+                }
+            }
+        }
+    }
+
+    traverseSchema(undefined, schema as unknown as TSchema);
+
+    // Merge with standard options
+    return {
+        collect: [...collect, 'config'],
+        alias: { help: 'h', version: 'v', config: 'c' },
+    };
+}
+
+/**
+ * Traverses the provided TypeBox schema and compiles CLI help text based on the 
+ * schema's properties and their descriptions.  The schema is expected to be
  * a top-level object schema whose property names become the CLI flag prefixes
  * (e.g. a property `service` produces options such as `--service.enabled`).
  * @param schema The top-level schema.
  * @returns The compiled CLI data.
  */
-export function compileSection(schema: typebox.TSchema): CliData {
+function compileOptionsHelp(schema: typebox.TSchema): Line[] {
     const lines: Line[] = [];
-    const parseOptions = {
-        collect: [] as string[],
-    };
 
     // Helper function to add a CLI option line for a schema property that has a description.
     function annotateOption(option: string, prop: TSchema) {
@@ -199,7 +262,6 @@ export function compileSection(schema: typebox.TSchema): CliData {
                     if (prop.items.description) {
                         annotateOption(subsection, prop.items);
                     }
-                    parseOptions.collect.push(subsection);
                     traverseSchema(subsection, prop.items);
                 } else {
                     if (prop.description) {
@@ -212,20 +274,15 @@ export function compileSection(schema: typebox.TSchema): CliData {
     }
 
     traverseSchema(undefined, schema as unknown as TSchema); // Coerce to our simplified TSchema type
-    return { lines, parseOptions };
+    return lines;
 }
 
 /**
- * Gets standard options for the CLI, including help, version and config file names.
- * @returns The compiled CLI data.
+ * Gets standard option help lines for the CLI, including help, version and config file names.
+ * @returns Array of help lines for standard options.
  */
-export function getStandardOptions(): CliData {
-    const parseOptions: ParseOptions = {
-        collect: ['config'],
-        alias: { help: 'h', version: 'v', config: 'c' },
-    };
-
-    const lines = [
+function getStandardOptions(): Line[] {
+    return [
         {
             column1: '\n%cStandard options',
             format: [palette.section],
@@ -250,27 +307,28 @@ export function getStandardOptions(): CliData {
             ],
         },
     ];
-
-    return { lines, parseOptions };
 }
 
 /**
  * Creates the CLI introductory section.
- * @param intro Brief description of what the app does.  If omitted, will be taken from the
- * "description" field in deno.json, or else the "name" field, else the program name.
- * @param usage E.g. 'deno foo.ts [OPTIONS]'. If omitted, will be constructed from the program name.
+ * @param options Optional intro settings.
+ * @param options.intro Brief description of what the app does. If omitted, this is taken from
+ * the "description" field in deno.json/package.json, or else the "name" field, else the program name.
+ * @param options.usage E.g. 'deno foo.ts [OPTIONS]'. If omitted, this is constructed from the program name.
  * @returns Compiled CLI data.
  */
-export function createIntro(intro?: string, usage?: string): CliData {
+function createIntro(options: HelpOptions = {}): Line[] {
+    const { intro, usage } = options;
     const runtimeCommand = getRuntimeEnvironment() === 'deno' ? 'deno' : 'node';
-    const lines = [
+    const appMeta = getAppMetadata();
+    return [
         {
             column1: intro 
                 ? intro 
-                : meta.description 
-                    ? meta.description 
-                    : meta.name 
-                        ? meta.name 
+                : appMeta.description 
+                    ? appMeta.description 
+                    : appMeta.name 
+                        ? appMeta.name 
                         : getProgramName(),
         },
         {
@@ -280,41 +338,27 @@ export function createIntro(intro?: string, usage?: string): CliData {
             format: [palette.usage, palette.default],
         },
     ];
-    return { lines };
 }
 
 /**
- * Combines sections of the CLI into one piece, suitable for parsing and display.
- * @param cliSections An array of CLI sections.
- * @returns The compiled CLI data.
+ * Compiles complete CLI help output by combining intro, standard options, and schema options.
+ * @param schema The top-level schema for application-specific options.
+ * @param options Optional intro settings.
+ * @returns Compiled help lines.
  */
-export function combineSections(cliSections: CliData[]): CliData {
-    const lines: Line[] = [];
-    const parseOptions = {
-        collect: [] as string[],
-        alias: {} as Record<string, string>,
-    };
-
-    for (const cliSection of cliSections) {
-        lines.push(...cliSection.lines);
-        if (cliSection.parseOptions) {
-            if (cliSection.parseOptions.alias) {
-                Object.assign(parseOptions.alias, cliSection.parseOptions.alias);
-            }
-            if (cliSection.parseOptions.collect) {
-                parseOptions.collect.push(...cliSection.parseOptions.collect);
-            }
-        }
-    }
-
-    return { lines, parseOptions };
+function compileHelp(schema: typebox.TSchema, options: HelpOptions = {}): Line[] {
+    return [
+        ...createIntro(options),
+        ...getStandardOptions(),
+        ...compileOptionsHelp(schema),
+    ];
 }
 
 /**
  * Display help text for CLI usage, aligning columns and applying formatting.
  * @param lines Columns to display, with optional formatting instructions.
  */
-export function displayHelp(lines: Line[]): void {
+function displayHelpLines(lines: Line[]): void {
     // For multi-column lines, calculate max width of column 1 and pad it for alignment
     const multiColumn = lines.filter((line) => line.column2 !== undefined);
     let maxColumn1Width = Math.max(...multiColumn.map((line) => line.column1.length));
@@ -339,12 +383,13 @@ export function displayHelp(lines: Line[]): void {
 }
 
 /**
- * Display the program version, which is taken from the deno.json file.
+ * Display the program version, which is taken from the deno.json or package.json file.
  */
-export function displayVersion(): void {
+function displayVersionInfo(): void {
+    const appMeta = getAppMetadata();
     console.log(
-        meta.name ? meta.name : getProgramName(),
-        meta.version ?? 'version unknown',
+        appMeta.name ?? getProgramName(),
+        appMeta.version ?? '0.0.0',
     );
 }
 
@@ -380,45 +425,60 @@ function removeEmptyProperties(obj: TConfig): TConfig | undefined {
 }
 
 /**
- * Processes CLI commands, looking for standard options (help, version, config file names) and
- * additional config options from the command line, If help or version is requested, displays the
- * appropriate information and exits. Otherwise, returns any config files specified and additional
- * config options obtained from the CLI.
- * @param cliData CLI data containing help text and parsing options.
- * @returns A Result object containing the config files and additional config options, or a string
- * indicating an error.
+ * CLI that compiles schema-driven help and parse options and exposes runtime commands.
  */
-export function processCommands(cliData: CliData): Result<{
-    configFiles: string[];
-    additionalConfig: TConfig | undefined;
-}, string> {
-    const args = parseArgs(process.argv.slice(2), cliData.parseOptions);
+export class Cli {
+    #schema: typebox.TSchema;
+    #helpOptions: HelpOptions;
 
-    // Remove standard options from the args object, leaving only those from the config schema. 
-    const { _, help, version, config, ...configArgs } = args;
-
-    if (version) {
-        displayVersion();
-        process.exit(0);
+    /**
+     * Constructor.
+     * @param schema The top-level schema for application-specific options.
+     * @param options Optional help settings used to build the help display.
+     */
+    constructor(schema: typebox.TSchema, options: HelpOptions = {}) {
+        this.#schema = schema;
+        this.#helpOptions = options;
     }
 
-    if (help) {
-        displayHelp(cliData.lines);
-        process.exit(0);
-    }
+    /**
+     * Processes CLI commands and returns config files and supplemental configuration.
+     * @returns Parsed CLI command results.
+     */
+    processCommands(): Result<{
+        configFiles: string[];
+        additionalConfig: TConfig | undefined;
+    }, string> {
+        const parseOptions = compileParseOptions(this.#schema);
+        const args = parseArgs(process.argv.slice(2), parseOptions);
 
-    let configFiles: string[] = [];
+        // Remove standard options from the args object, leaving only those from the config schema.
+        const { _, help, version, config, ...configArgs } = args;
 
-    if (Array.isArray(config)) {
-        if (config.some((item) => typeof item !== 'string')) {
-            return failure('Config filenames must be strings');
+        if (version) {
+            displayVersionInfo();
+            process.exit(0);
         }
-        configFiles = config as string[];
-    }
 
-    // Look for any supplemental configuration options from the CLI. Remove any options with
-    // undefined values or zero-length arrays. Pass back any config files along with the
-    // supplemental config.
-    const additionalConfig = removeEmptyProperties(configArgs as TConfig);
-    return success({ configFiles, additionalConfig });
+        if (help) {
+            const lines = compileHelp(this.#schema, this.#helpOptions);
+            displayHelpLines(lines);
+            process.exit(0);
+        }
+
+        let configFiles: string[] = [];
+
+        if (Array.isArray(config)) {
+            if (config.some((item) => typeof item !== 'string')) {
+                return failure('Config filenames must be strings');
+            }
+            configFiles = config as string[];
+        }
+
+        // Look for any supplemental configuration options from the CLI. Remove any options with
+        // undefined values or zero-length arrays. Pass back any config files along with the
+        // supplemental config.
+        const additionalConfig = removeEmptyProperties(configArgs as TConfig);
+        return success({ configFiles, additionalConfig });
+    }
 }
