@@ -2,26 +2,16 @@
   "version": "5",
   "specifiers": {
     "jsr:@std/assert@1": "1.0.18",
-    "jsr:@std/cli@^1.0.28": "1.0.28",
     "jsr:@std/fmt@^1.0.9": "1.0.9",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/path@^1.1.4": "1.1.4",
-    "npm:@types/minimist@^1.2.5": "1.2.5",
     "npm:json5@^2.2.3": "2.2.3",
-    "npm:minimist@^1.2.8": "1.2.8",
     "npm:typebox@^1.1.6": "1.1.6"
   },
   "jsr": {
     "@std/assert@1.0.18": {
       "integrity": "270245e9c2c13b446286de475131dc688ca9abcd94fc5db41d43a219b34d1c78",
       "dependencies": [
-        "jsr:@std/internal"
-      ]
-    },
-    "@std/cli@1.0.28": {
-      "integrity": "74ef9b976db59ca6b23a5283469c9072be6276853807a83ec6c7ce412135c70a",
-      "dependencies": [
-        "jsr:@std/fmt",
         "jsr:@std/internal"
       ]
     },
@@ -39,15 +29,9 @@
     }
   },
   "npm": {
-    "@types/minimist@1.2.5": {
-      "integrity": "sha512-hov8bUuiLiyFPGyFPE1lwWhmzYbirOXQNNo40+y3zow8aFVTeyn3VWL0VFFfdNddA8S4Vf0Tc062rzyNr7Paag=="
-    },
     "json5@2.2.3": {
       "integrity": "sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg==",
       "bin": true
-    },
-    "minimist@1.2.8": {
-      "integrity": "sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA=="
     },
     "typebox@1.1.6": {
       "integrity": "sha512-O2iWCF+RboQfDqr6n83eOq0dKCjVchMWklKgdwKFeR01MGTskILHYEFi9n3lQvfuua4CtvG/EJEIg3P8H9eBcw=="
@@ -59,7 +43,6 @@
       "jsr:@std/cli@^1.0.28",
       "jsr:@std/path@^1.1.4",
       "npm:json5@^2.2.3",
-      "npm:minimist@^1.2.8",
       "npm:typebox@^1.1.6"
     ]
   }
