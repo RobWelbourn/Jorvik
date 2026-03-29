@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import process from 'node:process';
 import type * as typebox from 'typebox';
 import { type Result, failure, success } from './result.ts';
-import type { TConfig } from './configmgr.ts';
+import type { TConfig, TConfigElement } from './configmgr.ts';
 import { type ParseOptions, parseArgs } from './parseargs.ts';
 
 /** Simplified version of TypeBox's TSchema, containing only fields relevant for CLI generation. */
@@ -88,6 +88,8 @@ export type HelpOptions = {
     intro?: string;
     /** Usage line, e.g. `deno foo.ts [OPTIONS]`. */
     usage?: string;
+    /** Additional help lines to render after usage. */
+    more?: Line[];
 };
 
 /**
@@ -315,13 +317,14 @@ function getStandardOptions(): Line[] {
  * @param options.intro Brief description of what the app does. If omitted, this is taken from
  * the "description" field in deno.json/package.json, or else the "name" field, else the program name.
  * @param options.usage E.g. 'deno foo.ts [OPTIONS]'. If omitted, this is constructed from the program name.
+ * @param options.more Additional help lines rendered after usage, separated by a blank line.
  * @returns Compiled CLI data.
  */
 function createIntro(options: HelpOptions = {}): Line[] {
-    const { intro, usage } = options;
+    const { intro, usage, more } = options;
     const runtimeCommand = getRuntimeEnvironment() === 'deno' ? 'deno' : 'node';
     const appMeta = getAppMetadata();
-    return [
+    const lines: Line[] = [
         {
             column1: intro 
                 ? intro 
@@ -338,6 +341,12 @@ function createIntro(options: HelpOptions = {}): Line[] {
             format: [palette.usage, palette.default],
         },
     ];
+
+    if (more && more.length > 0) {
+        lines.push({ column1: '' }, ...more);
+    }
+
+    return lines;
 }
 
 /**
@@ -430,6 +439,7 @@ function removeEmptyProperties(obj: TConfig): TConfig | undefined {
 export class Cli {
     #schema: typebox.TSchema;
     #helpOptions: HelpOptions;
+    #positionalParams: TConfigElement[] | undefined;
 
     /**
      * Constructor.
@@ -439,6 +449,19 @@ export class Cli {
     constructor(schema: typebox.TSchema, options: HelpOptions = {}) {
         this.#schema = schema;
         this.#helpOptions = options;
+    }
+
+    /**
+     * Returns the positional (non-flag) arguments from the CLI.
+     * @returns Array of positional parameter values.
+     */
+    getPositionalParams(): TConfigElement[] {
+        if (!this.#positionalParams) {
+            const parseOptions = compileParseOptions(this.#schema);
+            const args = parseArgs(process.argv.slice(2), parseOptions);
+            this.#positionalParams = args._;
+        }
+        return this.#positionalParams;
     }
 
     /**
@@ -454,6 +477,7 @@ export class Cli {
 
         // Remove standard options from the args object, leaving only those from the config schema.
         const { _, help, version, config, ...configArgs } = args;
+        this.#positionalParams = _;
 
         if (version) {
             displayVersionInfo();

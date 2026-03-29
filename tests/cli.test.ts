@@ -74,6 +74,15 @@ Deno.test('getRuntimeEnvironment: returns deno when running in Deno tests', () =
 	assertEquals(getRuntimeEnvironment(), 'deno');
 });
 
+Deno.test('Cli.getPositionalParams: returns positional arguments from parseArgs', () => {
+	const cli = new Cli(createTestSchema());
+
+	withProcessArgs(['alpha', '42', 'true', '--name', 'agent'], () => {
+		const positional = cli.getPositionalParams();
+		assertEquals(positional, ['alpha', 42, 'true']);
+	});
+});
+
 Deno.test('Cli.processCommands: returns config files and additional config', () => {
 	const cli = new Cli(createTestSchema());
 
@@ -124,6 +133,32 @@ Deno.test('Cli.processCommands: triggers displayHelp and exits when --help is pr
 				assertThrows(() => cli.processCommands(), Error, 'exit:0');
 				assert(calls.length > 0);
 				assertEquals(calls[0][0], 'Usage line');
+			});
+		});
+	});
+});
+
+Deno.test('Cli.processCommands: renders HelpOptions.more after usage with a blank line', () => {
+	const cli = new Cli(createTestSchema(), {
+		intro: 'Usage line',
+		usage: 'node app.js [OPTIONS]',
+		more: [
+			{ column1: 'More details line 1' },
+			{ column1: 'More details line 2' },
+		],
+	});
+
+	withProcessArgs(['--help'], () => {
+		withProcessExitStub((code?: number): never => {
+			throw new Error(`exit:${code ?? ''}`);
+		}, () => {
+			withConsoleLogCapture((calls) => {
+				assertThrows(() => cli.processCommands(), Error, 'exit:0');
+				assertEquals(calls[0][0], 'Usage line');
+				assertEquals(calls[1][0], '\n%cUsage: %cnode app.js [OPTIONS]');
+				assertEquals(calls[2][0], '');
+				assertEquals(calls[3][0], 'More details line 1');
+				assertEquals(calls[4][0], 'More details line 2');
 			});
 		});
 	});
