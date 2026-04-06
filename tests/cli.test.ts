@@ -79,7 +79,10 @@ Deno.test('Cli.getPositionalParams: returns positional arguments from parseArgs'
 
 	withProcessArgs(['alpha', '42', 'true', '--name', 'agent'], () => {
 		const positional = cli.getPositionalParams();
-		assertEquals(positional, ['alpha', 42, 'true']);
+		assertEquals(positional.success, true);
+		if (positional.success) {
+			assertEquals(positional.value, ['alpha', 42, 'true']);
+		}
 	});
 });
 
@@ -138,14 +141,20 @@ Deno.test('Cli.processCommands: triggers displayHelp and exits when --help is pr
 	});
 });
 
-Deno.test('Cli.processCommands: renders HelpOptions.more after usage with a blank line', () => {
+
+Deno.test('Cli.processCommands: renders positional schema help after usage', () => {
+	const positionalSchema = Type.Object({
+		input: Type.String({ description: 'Input filename' }),
+		mode: Type.String({ description: 'Execution mode', enum: ['fast', 'safe'], default: 'safe' }),
+		rest: Type.Optional(Type.Array(Type.String({ description: 'Extra values' }))),
+	}, {
+		description: 'Positional argument mapping',
+	});
+
 	const cli = new Cli(createTestSchema(), {
 		intro: 'Usage line',
 		usage: 'node app.js [OPTIONS]',
-		more: [
-			{ column1: 'More details line 1' },
-			{ column1: 'More details line 2' },
-		],
+		positionalSchema,
 	});
 
 	withProcessArgs(['--help'], () => {
@@ -156,11 +165,38 @@ Deno.test('Cli.processCommands: renders HelpOptions.more after usage with a blan
 				assertThrows(() => cli.processCommands(), Error, 'exit:0');
 				assertEquals(calls[0][0], 'Usage line');
 				assertEquals(calls[1][0], '\n%cUsage: %cnode app.js [OPTIONS]');
-				assertEquals(calls[2][0], '');
-				assertEquals(calls[3][0], 'More details line 1');
-				assertEquals(calls[4][0], 'More details line 2');
+				assertEquals(calls[2][0], '\n%cPositional parameters');
+				assertEquals(calls[3][0], 'Positional argument mapping');
+				assert(String(calls[4][0]).includes('input'));
+				assert(String(calls[5][0]).includes('mode'));
+				assert(String(calls[6][0]).includes('rest...'));
 			});
 		});
+	});
+});
+
+
+Deno.test('Cli.getPositionalParams: validates positional params against positionalSchema', () => {
+	const positionalSchema = Type.Object({
+		input: Type.String(),
+		mode: Type.String({ enum: ['fast', 'safe'], default: 'safe' }),
+		rest: Type.Optional(Type.Array(Type.String())),
+	});
+
+	const cli = new Cli(createTestSchema(), {
+		positionalSchema,
+	});
+
+	withProcessArgs(['in.txt', 'fast', 'one', 'two'], () => {
+		const result = cli.getPositionalParams<typeof positionalSchema>();
+		assertEquals(result.success, true);
+		if (result.success) {
+			assertEquals(result.value, {
+				input: 'in.txt',
+				mode: 'fast',
+				rest: ['one', 'two'],
+			});
+		}
 	});
 });
 

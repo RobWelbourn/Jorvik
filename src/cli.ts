@@ -11,11 +11,13 @@ import type * as typebox from 'typebox';
 import { type Result, failure, success } from './result.ts';
 import type { TConfig, TConfigElement } from './configmgr.ts';
 import { type ParseOptions, parseArgs } from './parseargs.ts';
+import { customParse } from './typeboxhelpers.ts';
 
 /** Simplified version of TypeBox's TSchema, containing only fields relevant for CLI generation. */
 type TSchema = {
     type: 'object' | 'array' | 'string' | 'number' | 'boolean';
     properties?: { [key: string]: TSchema };
+    required?: string[];
     items?: TSchema;
     title?: string;
     description?: string;
@@ -83,14 +85,45 @@ export type Line = {
 };
 
 /** Optional settings for composing the introductory help section. */
-export type HelpOptions = {
+export type HelpOptions<PositionalSchema extends typebox.TSchema | undefined = undefined> = {
     /** Brief description of what the app does. */
     intro?: string;
     /** Usage line, e.g. `deno foo.ts [OPTIONS]`. */
     usage?: string;
-    /** Additional help lines to render after usage. */
-    more?: Line[];
+    /** Schema for positional (non-flag) parameters. */
+    positionalSchema?: PositionalSchema;
 };
+
+type PositionalParamsValue<PositionalSchema extends typebox.TSchema | undefined> =
+    PositionalSchema extends typebox.TSchema
+        ? typebox.Static<PositionalSchema>
+        : TConfigElement[];
+
+function buildHelpValueSuffix(prop: TSchema): { suffix: string; format: string[] } {
+    const format: string[] = [palette.default];
+    let suffix = '';
+
+    if (prop.default || prop.default === false || prop.enum) {
+        suffix = '(';
+
+        if (prop.enum) {
+            suffix += 'options: %c';
+            suffix += prop.enum.join(' ');
+            suffix += '%c';
+            format.push(palette.value, palette.default);
+        }
+
+        if (prop.default || prop.default === false) {
+            suffix += prop.enum ? '; default: %c' : 'default: %c';
+            suffix += `${prop.default}%c`;
+            format.push(palette.value, palette.default);
+        }
+
+        suffix += ')';
+    }
+
+    return { suffix, format };
+}
 
 /**
  * Utility function to get the short form of the program entry point.
@@ -221,27 +254,8 @@ function compileOptionsHelp(schema: typebox.TSchema): Line[] {
 
         const column1 = `  %c--${option}`;
         const format = [palette.option, palette.default];
-        let suffix = '';
-
-        // Must check for false value of prop.default, to distinguish from absence of a value
-        if (prop.default || prop.default === false || prop.enum) {
-            suffix = '(';
-
-            if (prop.enum) {
-                suffix += 'options: %c';
-                suffix += prop.enum.join(' ');
-                suffix += '%c';
-                format.push(palette.value, palette.default);
-            }
-
-            if (prop.default || prop.default === false) {
-                suffix += prop.enum ? '; default: %c' : 'default: %c';
-                suffix += `${prop.default}%c`;
-                format.push(palette.value, palette.default);
-            }
-
-            suffix += ')';
-        }
+        const { suffix, format: valueFormat } = buildHelpValueSuffix(prop);
+        format.push(...valueFormat.slice(1));
 
         const column2 = `%c${prop.description} ${suffix}`;
         lines.push({ column1, column2, format });
@@ -276,6 +290,42 @@ function compileOptionsHelp(schema: typebox.TSchema): Line[] {
     }
 
     traverseSchema(undefined, schema as unknown as TSchema); // Coerce to our simplified TSchema type
+    return lines;
+}
+
+function compilePositionalHelp(schema: typebox.TSchema | undefined): Line[] {
+    if (!schema) {
+        return [];
+    }
+
+    const positional = schema as unknown as TSchema;
+    if (positional.type !== 'object' || !positional.properties) {
+        return [];
+    }
+
+    const lines: Line[] = [
+        {
+            column1: '\n%cPositional parameters',
+            format: [palette.section],
+        },
+    ];
+
+    if (positional.description) {
+        lines.push({ column1: positional.description });
+    }
+
+    for (const [key, prop] of Object.entries(positional.properties)) {
+        const label = prop.items ? `${key}...` : key;
+        const { suffix, format: valueFormat } = buildHelpValueSuffix(prop);
+        const column2Body = prop.description ?? '';
+        const spacer = column2Body && suffix ? ' ' : '';
+        lines.push({
+            column1: `  %c${label}`,
+            column2: `%c${column2Body}${spacer}${suffix}`,
+            format: [palette.option, ...valueFormat],
+        });
+    }
+
     return lines;
 }
 
@@ -317,14 +367,13 @@ function getStandardOptions(): Line[] {
  * @param options.intro Brief description of what the app does. If omitted, this is taken from
  * the "description" field in deno.json/package.json, or else the "name" field, else the program name.
  * @param options.usage E.g. 'deno foo.ts [OPTIONS]'. If omitted, this is constructed from the program name.
- * @param options.more Additional help lines rendered after usage, separated by a blank line.
  * @returns Compiled CLI data.
  */
-function createIntro(options: HelpOptions = {}): Line[] {
-    const { intro, usage, more } = options;
+function createIntro(options: HelpOptions<typebox.TSchema | undefined> = {}): Line[] {
+    const { intro, usage } = options;
     const runtimeCommand = getRuntimeEnvironment() === 'deno' ? 'deno' : 'node';
     const appMeta = getAppMetadata();
-    const lines: Line[] = [
+    return [
         {
             column1: intro 
                 ? intro 
@@ -341,12 +390,6 @@ function createIntro(options: HelpOptions = {}): Line[] {
             format: [palette.usage, palette.default],
         },
     ];
-
-    if (more && more.length > 0) {
-        lines.push({ column1: '' }, ...more);
-    }
-
-    return lines;
 }
 
 /**
@@ -355,9 +398,13 @@ function createIntro(options: HelpOptions = {}): Line[] {
  * @param options Optional intro settings.
  * @returns Compiled help lines.
  */
-function compileHelp(schema: typebox.TSchema, options: HelpOptions = {}): Line[] {
+function compileHelp<PositionalSchema extends typebox.TSchema | undefined>(
+    schema: typebox.TSchema,
+    options: HelpOptions<PositionalSchema> = {} as HelpOptions<PositionalSchema>,
+): Line[] {
     return [
         ...createIntro(options),
+        ...compilePositionalHelp(options.positionalSchema),
         ...getStandardOptions(),
         ...compileOptionsHelp(schema),
     ];
@@ -436,9 +483,9 @@ function removeEmptyProperties(obj: TConfig): TConfig | undefined {
 /**
  * CLI that compiles schema-driven help and parse options and exposes runtime commands.
  */
-export class Cli {
+export class Cli<PositionalSchema extends typebox.TSchema | undefined = undefined> {
     #schema: typebox.TSchema;
-    #helpOptions: HelpOptions;
+    #helpOptions: HelpOptions<PositionalSchema>;
     #positionalParams: TConfigElement[] | undefined;
 
     /**
@@ -446,7 +493,10 @@ export class Cli {
      * @param schema The top-level schema for application-specific options.
      * @param options Optional help settings used to build the help display.
      */
-    constructor(schema: typebox.TSchema, options: HelpOptions = {}) {
+    constructor(
+        schema: typebox.TSchema,
+        options: HelpOptions<PositionalSchema> = {} as HelpOptions<PositionalSchema>,
+    ) {
         this.#schema = schema;
         this.#helpOptions = options;
     }
@@ -455,13 +505,74 @@ export class Cli {
      * Returns the positional (non-flag) arguments from the CLI.
      * @returns Array of positional parameter values.
      */
-    getPositionalParams(): TConfigElement[] {
+    getPositionalParams(): Result<PositionalParamsValue<PositionalSchema>, string> {
         if (!this.#positionalParams) {
             const parseOptions = compileParseOptions(this.#schema);
             const args = parseArgs(process.argv.slice(2), parseOptions);
             this.#positionalParams = args._;
         }
-        return this.#positionalParams;
+
+        const positionalSchema = this.#helpOptions.positionalSchema;
+        if (!positionalSchema) {
+            return success(this.#positionalParams as PositionalParamsValue<PositionalSchema>);
+        }
+
+        const rawSchema = positionalSchema as unknown as TSchema;
+        if (rawSchema.type !== 'object' || !rawSchema.properties) {
+            return failure('positionalSchema must be an object schema');
+        }
+
+        const propertyKeys = Object.keys(rawSchema.properties);
+        const requiredSet = new Set(rawSchema.required ?? propertyKeys);
+        const orderedKeys = [
+            ...propertyKeys.filter((key) => requiredSet.has(key)),
+            ...propertyKeys.filter((key) => !requiredSet.has(key)),
+        ];
+
+        const mapped: Record<string, TConfigElement> = {};
+        let position = 0;
+
+        for (let i = 0; i < orderedKeys.length; i += 1) {
+            const key = orderedKeys[i];
+            const prop = rawSchema.properties[key];
+            const isRequired = requiredSet.has(key);
+            const isLast = i === orderedKeys.length - 1;
+            const isArrayParam = prop.items !== undefined;
+
+            if (isArrayParam && !isLast) {
+                return failure('Only the last positional parameter may be an array');
+            }
+
+            if (isArrayParam) {
+                const rest = this.#positionalParams.slice(position);
+                if (rest.length > 0 || isRequired) {
+                    mapped[key] = rest;
+                }
+                position = this.#positionalParams.length;
+                continue;
+            }
+
+            if (position < this.#positionalParams.length) {
+                mapped[key] = this.#positionalParams[position];
+                position += 1;
+                continue;
+            }
+
+            if (isRequired && prop.default === undefined) {
+                return failure(`Missing required positional parameter: ${key}`);
+            }
+        }
+
+        if (position < this.#positionalParams.length) {
+            return failure('Too many positional parameters');
+        }
+
+        try {
+            return success(customParse(positionalSchema, mapped) as PositionalParamsValue<PositionalSchema>);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return failure(message);
+        }
     }
 
     /**
