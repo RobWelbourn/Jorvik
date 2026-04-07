@@ -75,7 +75,7 @@ export function setPalette(replacements: Partial<Palette>): void {
  * There should be one format string for each CSS placeholder (%c) in the line content.
  * @see https://docs.deno.com/examples/color_logging/
  */
-export type Line = {
+type Line = {
     /** First column */
     column1: string;
     /** Second column (optional) */
@@ -99,6 +99,11 @@ type PositionalParamsValue<PositionalSchema extends typebox.TSchema | undefined>
         ? typebox.Static<PositionalSchema>
         : TConfigElement[];
 
+/**
+ * Formats default and enum values for a schema value, which is added to the end of the line in parentheses.
+ * @param prop The schema property to format.
+ * @returns An object containing the formatted suffix and the corresponding CSS format strings.
+ */
 function buildHelpValueSuffix(prop: TSchema): { suffix: string; format: string[] } {
     const format: string[] = [palette.default];
     let suffix = '';
@@ -149,6 +154,11 @@ type AppMetadata = {
     description: string;
 };
 
+/**
+ * Looks in deno.json (Deno) or package.json (Node.js) for app metadata, i.e. name, version and description, 
+ * which are used in the CLI help and version display.  Defaults are '[app]', '0.0.0' and ''.
+ * @returns The app metadata.
+ */
 function getAppMetadata(): AppMetadata {
     const runtime = getRuntimeEnvironment();
 
@@ -293,6 +303,11 @@ function compileOptionsHelp(schema: typebox.TSchema): Line[] {
     return lines;
 }
 
+/**
+ * Compiles help lines for positional parameters based on the provided schema.
+ * @param schema The schema defining the positional parameters.
+ * @returns An array of help lines for the positional parameters.
+ */
 function compilePositionalHelp(schema: typebox.TSchema | undefined): Line[] {
     if (!schema) {
         return [];
@@ -362,6 +377,43 @@ function getStandardOptions(): Line[] {
 }
 
 /**
+ * Builds a formatted positional parameters string for the usage line.
+ * Required parameters are shown as-is, optional parameters are enclosed in square brackets,
+ * and array parameters are followed by an ellipsis.
+ * @param schema The schema defining the positional parameters.
+ * @returns A formatted string for the usage line, e.g. "input [mode] [rest...]".
+ */
+function buildPositionalParamsString(schema: typebox.TSchema | undefined): string {
+    if (!schema) {
+        return '';
+    }
+
+    const positional = schema as unknown as TSchema;
+    if (positional.type !== 'object' || !positional.properties) {
+        return '';
+    }
+
+    const propertyKeys = Object.keys(positional.properties);
+    const requiredSet = new Set(positional.required ?? propertyKeys);
+    const orderedKeys = [
+        ...propertyKeys.filter((key) => requiredSet.has(key)),
+        ...propertyKeys.filter((key) => !requiredSet.has(key)),
+    ];
+
+    const parts: string[] = [];
+    for (const key of orderedKeys) {
+        const prop = positional.properties[key];
+        const isRequired = requiredSet.has(key);
+        const isArray = prop.items !== undefined;
+        const suffix = isArray ? '...' : '';
+        const param = `${key}${suffix}`;
+        parts.push(isRequired ? param : `[${param}]`);
+    }
+
+    return parts.join(' ');
+}
+
+/**
  * Creates the CLI introductory section.
  * @param options Optional intro settings.
  * @param options.intro Brief description of what the app does. If omitted, this is taken from
@@ -373,6 +425,16 @@ function createIntro(options: HelpOptions<typebox.TSchema | undefined> = {}): Li
     const { intro, usage } = options;
     const runtimeCommand = getRuntimeEnvironment() === 'deno' ? 'deno' : 'node';
     const appMeta = getAppMetadata();
+
+    let usageLine: string;
+    if (usage) {
+        usageLine = usage;
+    } else {
+        const positionalSuffix = buildPositionalParamsString(options.positionalSchema);
+        const positionalPart = positionalSuffix ? ` ${positionalSuffix}` : '';
+        usageLine = `${runtimeCommand} ${getProgramName()} [OPTIONS]${positionalPart}`;
+    }
+
     return [
         {
             column1: intro 
@@ -384,9 +446,7 @@ function createIntro(options: HelpOptions<typebox.TSchema | undefined> = {}): Li
                         : getProgramName(),
         },
         {
-            column1: usage 
-                ? `\n%cUsage: %c${usage}` 
-                : `\n%cUsage: %c${runtimeCommand} ${getProgramName()} [OPTIONS]`,
+            column1: `\n%cUsage: %c${usageLine}`,
             format: [palette.usage, palette.default],
         },
     ];
