@@ -285,8 +285,10 @@ function compileOptionsHelp(schema: typebox.TSchema): Line[] {
 
                 const subsection = section ? `${section}.${key}` : key;
                 if (prop.items) { // 'items' indicates an array
-                    if (prop.items.description) {
+                    if (prop.items.description) { // Description may be on the array items...
                         annotateOption(subsection, prop.items);
+                    } else if (prop.description) { // ...or on the array itself
+                        annotateOption(subsection, prop);
                     }
                     traverseSchema(subsection, prop.items);
                 } else {
@@ -299,7 +301,19 @@ function compileOptionsHelp(schema: typebox.TSchema): Line[] {
         }
     }
 
-    traverseSchema(undefined, schema as unknown as TSchema); // Coerce to our simplified TSchema type
+    // Add any top-level description as an introductory section.
+    const simplifiedSchema = schema as unknown as TSchema; // Coerce to our simplified TSchema type
+    if (simplifiedSchema.title) {
+        lines.push({
+            column1: '\n%c' + simplifiedSchema.title,
+            format: [palette.section],
+        });
+    }
+    if (simplifiedSchema.description) {
+        lines.push({ column1: simplifiedSchema.description });
+    }
+
+    traverseSchema(undefined, simplifiedSchema); 
     return lines;
 }
 
@@ -318,9 +332,10 @@ function compilePositionalHelp(schema: typebox.TSchema | undefined): Line[] {
         return [];
     }
 
+    const sectionTitle = positional.title ?? 'Positional parameters';
     const lines: Line[] = [
         {
-            column1: '\n%cPositional parameters',
+            column1: `\n%c${sectionTitle}`,
             format: [palette.section],
         },
     ];
@@ -393,6 +408,7 @@ function buildPositionalParamsString(schema: typebox.TSchema | undefined): strin
         return '';
     }
 
+    // Put required parameters first, followed by optional ones.
     const propertyKeys = Object.keys(positional.properties);
     const requiredSet = new Set(positional.required ?? propertyKeys);
     const orderedKeys = [
@@ -416,9 +432,10 @@ function buildPositionalParamsString(schema: typebox.TSchema | undefined): strin
 /**
  * Creates the CLI introductory section.
  * @param options Optional intro settings.
- * @param options.intro Brief description of what the app does. If omitted, this is taken from
- * the "description" field in deno.json/package.json, or else the "name" field, else the program name.
+ * @param options.intro Brief description of what the app does. If omitted, this is taken from the
+ * "description" field in deno.json/package.json, or else the "name" field, else the program name.
  * @param options.usage E.g. 'deno foo.ts [OPTIONS]'. If omitted, this is constructed from the program name.
+ * @param options.positionalSchema Schema for positional (non-flag) parameters, used to build the usage line.   
  * @returns Compiled CLI data.
  */
 function createIntro(options: HelpOptions<typebox.TSchema | undefined> = {}): Line[] {

@@ -70,6 +70,15 @@ description: 'Service configuration',
 });
 }
 
+function createTopLevelMetadataSchema() {
+	return Type.Object({
+		name: Type.String({ description: 'Agent name' }),
+	}, {
+		title: 'Application options',
+		description: 'Top-level schema description',
+	});
+}
+
 Deno.test('getRuntimeEnvironment: returns deno when running in Deno tests', () => {
 	assertEquals(getRuntimeEnvironment(), 'deno');
 });
@@ -141,6 +150,26 @@ Deno.test('Cli.processCommands: triggers displayHelp and exits when --help is pr
 	});
 });
 
+Deno.test('Cli.processCommands: help includes top-level title and description', () => {
+	const cli = new Cli(createTopLevelMetadataSchema(), {
+		intro: 'Usage line',
+		usage: 'node app.js [OPTIONS]',
+	});
+
+	withProcessArgs(['--help'], () => {
+		withProcessExitStub((code?: number): never => {
+			throw new Error(`exit:${code ?? ''}`);
+		}, () => {
+			withConsoleLogCapture((calls) => {
+				assertThrows(() => cli.processCommands(), Error, 'exit:0');
+				const rendered = calls.map((call) => String(call[0]));
+				assert(rendered.some((line) => line.includes('Application options')));
+				assert(rendered.some((line) => line.includes('Top-level schema description')));
+			});
+		});
+	});
+});
+
 
 Deno.test('Cli.processCommands: renders positional schema help after usage', () => {
 	const positionalSchema = Type.Object({
@@ -188,7 +217,7 @@ Deno.test('Cli.getPositionalParams: validates positional params against position
 	});
 
 	withProcessArgs(['in.txt', 'fast', 'one', 'two'], () => {
-		const result = cli.getPositionalParams<typeof positionalSchema>();
+		const result = cli.getPositionalParams();
 		assertEquals(result.success, true);
 		if (result.success) {
 			assertEquals(result.value, {
