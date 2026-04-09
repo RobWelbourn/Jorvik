@@ -1,416 +1,281 @@
 /**
- * @fileoverview Unit tests for the cli.ts module.
+ * @fileoverview Unit tests for the Cli class public API (cli.ts).
  */
 
 import { assert, assertEquals, assertThrows } from '@std/assert';
-import process from 'node:process';
 import { Type } from 'typebox';
+import { Cli, getPalette, setPalette } from '../src/cli.ts';
 import {
-	Cli,
-	getRuntimeEnvironment,
-	getPalette,
-	setPalette,
-} from '../src/cli.ts';
+    createTestSchema,
+    withConsoleLogCapture,
+    withProcessArgs,
+    withProcessExitStub,
+} from './helpers.ts';
 
-function withProcessArgs(args: string[], fn: () => void) {
-	const descriptor = Object.getOwnPropertyDescriptor(process, 'argv');
-	Object.defineProperty(process, 'argv', {
-configurable: true,
-value: ['node', 'app.js', ...args],
-});
-	try {
-		fn();
-	} finally {
-		if (descriptor) {
-			Object.defineProperty(process, 'argv', descriptor);
-		}
-	}
-}
+// --- getPositionalParams ---
 
-function withProcessExitStub(stub: (code?: number) => never, fn: () => void) {
-	const descriptor = Object.getOwnPropertyDescriptor(process, 'exit');
-	Object.defineProperty(process, 'exit', {
-configurable: true,
-value: stub,
-});
-	try {
-		fn();
-	} finally {
-		if (descriptor) {
-			Object.defineProperty(process, 'exit', descriptor);
-		}
-	}
-}
+Deno.test('Cli.getPositionalParams: returns raw positional arguments when no schema is set', () => {
+    const cli = new Cli(createTestSchema());
 
-function withConsoleLogCapture(fn: (calls: unknown[][]) => void) {
-	const calls: unknown[][] = [];
-	const original = console.log;
-	console.log = (...args: unknown[]) => {
-		calls.push(args);
-	};
-	try {
-		fn(calls);
-	} finally {
-		console.log = original;
-	}
-}
-
-function createTestSchema() {
-	return Type.Object({
-name: Type.String({ description: 'Agent name' }),
-feature: Type.Boolean({ description: 'Enable feature' }),
-tags: Type.Array(Type.String({ description: 'Tag list' })),
-service: Type.Object({
-enabled: Type.Boolean({ description: 'Enable service', default: false }),
-mode: Type.String({ description: 'Mode', enum: ['fast', 'safe'], default: 'safe' }),
-}, {
-title: 'Service options',
-description: 'Service configuration',
-}),
-});
-}
-
-function createTopLevelMetadataSchema() {
-	return Type.Object({
-		name: Type.String({ description: 'Agent name' }),
-	}, {
-		title: 'Application options',
-		description: 'Top-level schema description',
-	});
-}
-
-Deno.test('getRuntimeEnvironment: returns deno when running in Deno tests', () => {
-	assertEquals(getRuntimeEnvironment(), 'deno');
+    withProcessArgs(['alpha', '42', 'true', '--name', 'agent'], () => {
+        const positional = cli.getPositionalParams();
+        assertEquals(positional.success, true);
+        if (positional.success) {
+            assertEquals(positional.value, ['alpha', 42, 'true']);
+        }
+    });
 });
 
-Deno.test('Cli.getPositionalParams: returns positional arguments from parseArgs', () => {
-	const cli = new Cli(createTestSchema());
+Deno.test('Cli.getPositionalParams: validates and maps positionals via positionalSchema', () => {
+    const positionalSchema = Type.Object({
+        input: Type.String(),
+        mode: Type.String({ enum: ['fast', 'safe'], default: 'safe' }),
+        rest: Type.Optional(Type.Array(Type.String())),
+    });
 
-	withProcessArgs(['alpha', '42', 'true', '--name', 'agent'], () => {
-		const positional = cli.getPositionalParams();
-		assertEquals(positional.success, true);
-		if (positional.success) {
-			assertEquals(positional.value, ['alpha', 42, 'true']);
-		}
-	});
+    const cli = new Cli(createTestSchema(), { positionalSchema });
+
+    withProcessArgs(['in.txt', 'fast', 'one', 'two'], () => {
+        const result = cli.getPositionalParams();
+        assertEquals(result.success, true);
+        if (result.success) {
+            assertEquals(result.value, { input: 'in.txt', mode: 'fast', rest: ['one', 'two'] });
+        }
+    });
 });
+
+// --- processCommands ---
 
 Deno.test('Cli.processCommands: returns config files and additional config', () => {
-	const cli = new Cli(createTestSchema());
+    const cli = new Cli(createTestSchema());
 
-	withProcessArgs(['--config', 'a.json5', '--config', 'b.json5', '--name', 'agent', '--feature'], () => {
-		const result = cli.processCommands();
-		assertEquals(result.success, true);
-		if (result.success) {
-			assertEquals(result.value.configFiles, ['a.json5', 'b.json5']);
-			assertEquals(result.value.additionalConfig, { name: 'agent', feature: true });
-		}
-	});
+    withProcessArgs(['--config', 'a.json5', '--config', 'b.json5', '--name', 'agent', '--feature'], () => {
+        const result = cli.processCommands();
+        assertEquals(result.success, true);
+        if (result.success) {
+            assertEquals(result.value.configFiles, ['a.json5', 'b.json5']);
+            assertEquals(result.value.additionalConfig, { name: 'agent', feature: true });
+        }
+    });
 });
 
 Deno.test('Cli.processCommands: returns failure for non-string config entries', () => {
-	const cli = new Cli(createTestSchema());
+    const cli = new Cli(createTestSchema());
 
-	withProcessArgs(['--config', '42'], () => {
-		const result = cli.processCommands();
-		assertEquals(result.success, false);
-		if (!result.success) {
-			assertEquals(result.error, 'Config filenames must be strings');
-		}
-	});
+    withProcessArgs(['--config', '42'], () => {
+        const result = cli.processCommands();
+        assertEquals(result.success, false);
+        if (!result.success) {
+            assertEquals(result.error, 'Config filenames must be strings');
+        }
+    });
 });
 
 Deno.test('Cli.processCommands: triggers displayVersion and exits when --version is present', () => {
-	const cli = new Cli(createTestSchema());
+    const cli = new Cli(createTestSchema());
 
-	withProcessArgs(['--version'], () => {
-		withProcessExitStub((code?: number): never => {
-			throw new Error(`exit:${code ?? ''}`);
-		}, () => {
-			withConsoleLogCapture(() => {
-				assertThrows(() => cli.processCommands(), Error, 'exit:0');
-			});
-		});
-	});
-});
-
-Deno.test('Cli.processCommands: triggers displayHelp and exits when --help is present', () => {
-	const cli = new Cli(createTestSchema(), { intro: 'Usage line', usage: 'node app.js [OPTIONS]' });
-
-	withProcessArgs(['--help'], () => {
-		withProcessExitStub((code?: number): never => {
-			throw new Error(`exit:${code ?? ''}`);
-		}, () => {
-			withConsoleLogCapture((calls) => {
-				assertThrows(() => cli.processCommands(), Error, 'exit:0');
-				assert(calls.length > 0);
-				assertEquals(calls[0][0], 'Usage line');
-			});
-		});
-	});
-});
-
-Deno.test('Cli.processCommands: help includes top-level title and description', () => {
-	const cli = new Cli(createTopLevelMetadataSchema(), {
-		intro: 'Usage line',
-		usage: 'node app.js [OPTIONS]',
-	});
-
-	withProcessArgs(['--help'], () => {
-		withProcessExitStub((code?: number): never => {
-			throw new Error(`exit:${code ?? ''}`);
-		}, () => {
-			withConsoleLogCapture((calls) => {
-				assertThrows(() => cli.processCommands(), Error, 'exit:0');
-				const rendered = calls.map((call) => String(call[0]));
-				assert(rendered.some((line) => line.includes('Application options')));
-				assert(rendered.some((line) => line.includes('Top-level schema description')));
-			});
-		});
-	});
-});
-
-
-Deno.test('Cli.processCommands: renders positional schema help after usage', () => {
-	const positionalSchema = Type.Object({
-		input: Type.String({ description: 'Input filename' }),
-		mode: Type.String({ description: 'Execution mode', enum: ['fast', 'safe'], default: 'safe' }),
-		rest: Type.Optional(Type.Array(Type.String({ description: 'Extra values' }))),
-	}, {
-		description: 'Positional argument mapping',
-	});
-
-	const cli = new Cli(createTestSchema(), {
-		intro: 'Usage line',
-		usage: 'node app.js [OPTIONS]',
-		positionalSchema,
-	});
-
-	withProcessArgs(['--help'], () => {
-		withProcessExitStub((code?: number): never => {
-			throw new Error(`exit:${code ?? ''}`);
-		}, () => {
-			withConsoleLogCapture((calls) => {
-				assertThrows(() => cli.processCommands(), Error, 'exit:0');
-				assertEquals(calls[0][0], 'Usage line');
-				assertEquals(calls[1][0], '\n%cUsage: %cnode app.js [OPTIONS]');
-				assertEquals(calls[2][0], '\n%cPositional parameters');
-				assertEquals(calls[3][0], 'Positional argument mapping');
-				assert(String(calls[4][0]).includes('input'));
-				assert(String(calls[5][0]).includes('mode'));
-				assert(String(calls[6][0]).includes('rest...'));
-			});
-		});
-	});
-});
-
-
-Deno.test('Cli.getPositionalParams: validates positional params against positionalSchema', () => {
-	const positionalSchema = Type.Object({
-		input: Type.String(),
-		mode: Type.String({ enum: ['fast', 'safe'], default: 'safe' }),
-		rest: Type.Optional(Type.Array(Type.String())),
-	});
-
-	const cli = new Cli(createTestSchema(), {
-		positionalSchema,
-	});
-
-	withProcessArgs(['in.txt', 'fast', 'one', 'two'], () => {
-		const result = cli.getPositionalParams();
-		assertEquals(result.success, true);
-		if (result.success) {
-			assertEquals(result.value, {
-				input: 'in.txt',
-				mode: 'fast',
-				rest: ['one', 'two'],
-			});
-		}
-	});
+    withProcessArgs(['--version'], () => {
+        withProcessExitStub((code?: number): never => {
+            throw new Error(`exit:${code ?? ''}`);
+        }, () => {
+            withConsoleLogCapture(() => {
+                assertThrows(() => cli.processCommands(), Error, 'exit:0');
+            });
+        });
+    });
 });
 
 Deno.test('Cli.processCommands: triggers displayVersion and exits when -v is present', () => {
-	const cli = new Cli(createTestSchema());
+    const cli = new Cli(createTestSchema());
 
-	withProcessArgs(['-v'], () => {
-		withProcessExitStub((code?: number): never => {
-			throw new Error(`exit:${code ?? ''}`);
-		}, () => {
-			withConsoleLogCapture(() => {
-				assertThrows(() => cli.processCommands(), Error, 'exit:0');
-			});
-		});
-	});
+    withProcessArgs(['-v'], () => {
+        withProcessExitStub((code?: number): never => {
+            throw new Error(`exit:${code ?? ''}`);
+        }, () => {
+            withConsoleLogCapture(() => {
+                assertThrows(() => cli.processCommands(), Error, 'exit:0');
+            });
+        });
+    });
+});
+
+Deno.test('Cli.processCommands: triggers displayHelp and exits when --help is present', () => {
+    const cli = new Cli(createTestSchema(), { intro: 'Usage line', usage: 'node app.js [OPTIONS]' });
+
+    withProcessArgs(['--help'], () => {
+        withProcessExitStub((code?: number): never => {
+            throw new Error(`exit:${code ?? ''}`);
+        }, () => {
+            withConsoleLogCapture((calls) => {
+                assertThrows(() => cli.processCommands(), Error, 'exit:0');
+                assert(calls.length > 0);
+                assertEquals(calls[0][0], 'Usage line');
+            });
+        });
+    });
 });
 
 Deno.test('Cli.processCommands: triggers displayHelp and exits when -h is present', () => {
-	const cli = new Cli(createTestSchema(), { intro: 'Usage line', usage: 'node app.js [OPTIONS]' });
+    const cli = new Cli(createTestSchema(), { intro: 'Usage line', usage: 'node app.js [OPTIONS]' });
 
-	withProcessArgs(['-h'], () => {
-		withProcessExitStub((code?: number): never => {
-			throw new Error(`exit:${code ?? ''}`);
-		}, () => {
-			withConsoleLogCapture((calls) => {
-				assertThrows(() => cli.processCommands(), Error, 'exit:0');
-				assert(calls.length > 0);
-				assertEquals(calls[0][0], 'Usage line');
-			});
-		});
-	});
+    withProcessArgs(['-h'], () => {
+        withProcessExitStub((code?: number): never => {
+            throw new Error(`exit:${code ?? ''}`);
+        }, () => {
+            withConsoleLogCapture((calls) => {
+                assertThrows(() => cli.processCommands(), Error, 'exit:0');
+                assert(calls.length > 0);
+                assertEquals(calls[0][0], 'Usage line');
+            });
+        });
+    });
 });
 
 Deno.test('Cli.processCommands: returns config files with long form --config', () => {
-	const cli = new Cli(createTestSchema());
+    const cli = new Cli(createTestSchema());
 
-	withProcessArgs(['--config', 'test.json5'], () => {
-		const result = cli.processCommands();
-		assertEquals(result.success, true);
-		if (result.success) {
-			assertEquals(result.value.configFiles, ['test.json5']);
-		}
-	});
+    withProcessArgs(['--config', 'test.json5'], () => {
+        const result = cli.processCommands();
+        assertEquals(result.success, true);
+        if (result.success) assertEquals(result.value.configFiles, ['test.json5']);
+    });
 });
 
 Deno.test('Cli.processCommands: returns config files with short form -c', () => {
-	const cli = new Cli(createTestSchema());
+    const cli = new Cli(createTestSchema());
 
-	withProcessArgs(['-c', 'test.json5'], () => {
-		const result = cli.processCommands();
-		assertEquals(result.success, true);
-		if (result.success) {
-			assertEquals(result.value.configFiles, ['test.json5']);
-		}
-	});
+    withProcessArgs(['-c', 'test.json5'], () => {
+        const result = cli.processCommands();
+        assertEquals(result.success, true);
+        if (result.success) assertEquals(result.value.configFiles, ['test.json5']);
+    });
 });
 
 Deno.test('Cli.processCommands: returns multiple config files with long form --config', () => {
-	const cli = new Cli(createTestSchema());
+    const cli = new Cli(createTestSchema());
 
-	withProcessArgs(['--config', 'a.json5', '--config', 'b.json5'], () => {
-		const result = cli.processCommands();
-		assertEquals(result.success, true);
-		if (result.success) {
-			assertEquals(result.value.configFiles, ['a.json5', 'b.json5']);
-		}
-	});
+    withProcessArgs(['--config', 'a.json5', '--config', 'b.json5'], () => {
+        const result = cli.processCommands();
+        assertEquals(result.success, true);
+        if (result.success) assertEquals(result.value.configFiles, ['a.json5', 'b.json5']);
+    });
 });
 
 Deno.test('Cli.processCommands: returns multiple config files with short form -c', () => {
-	const cli = new Cli(createTestSchema());
+    const cli = new Cli(createTestSchema());
 
-	withProcessArgs(['-c', 'a.json5', '-c', 'b.json5'], () => {
-		const result = cli.processCommands();
-		assertEquals(result.success, true);
-		if (result.success) {
-			assertEquals(result.value.configFiles, ['a.json5', 'b.json5']);
-		}
-	});
+    withProcessArgs(['-c', 'a.json5', '-c', 'b.json5'], () => {
+        const result = cli.processCommands();
+        assertEquals(result.success, true);
+        if (result.success) assertEquals(result.value.configFiles, ['a.json5', 'b.json5']);
+    });
 });
 
 Deno.test('Cli.processCommands: returns mixed config files using both long and short forms', () => {
-	const cli = new Cli(createTestSchema());
+    const cli = new Cli(createTestSchema());
 
-	withProcessArgs(['--config', 'a.json5', '-c', 'b.json5'], () => {
-		const result = cli.processCommands();
-		assertEquals(result.success, true);
-		if (result.success) {
-			assertEquals(result.value.configFiles, ['a.json5', 'b.json5']);
-		}
-	});
+    withProcessArgs(['--config', 'a.json5', '-c', 'b.json5'], () => {
+        const result = cli.processCommands();
+        assertEquals(result.success, true);
+        if (result.success) assertEquals(result.value.configFiles, ['a.json5', 'b.json5']);
+    });
 });
 
-Deno.test('getPalette: returns default palette with expected keys', () => {
-	const palette = getPalette();
+// --- palette ---
 
-	assertEquals(palette.default, 'display: revert');
-	assertEquals(palette.section, 'color: yellow');
-	assertEquals(palette.option, 'color: green');
-	assertEquals(palette.value, 'color: cyan; font-weight: bold');
-	assertEquals(palette.usage, 'color: gray');
+Deno.test('getPalette: returns default palette with expected keys', () => {
+    const palette = getPalette();
+
+    assertEquals(palette.default, 'display: revert');
+    assertEquals(palette.section, 'color: yellow');
+    assertEquals(palette.option, 'color: green');
+    assertEquals(palette.value, 'color: cyan; font-weight: bold');
+    assertEquals(palette.usage, 'color: gray');
 });
 
 Deno.test('getPalette: returns a deep copy of the palette', () => {
-	const palette1 = getPalette();
-	const palette2 = getPalette();
+    const palette1 = getPalette();
+    const palette2 = getPalette();
 
-	assertEquals(palette1, palette2);
-	assert(palette1 !== palette2);
+    assertEquals(palette1, palette2);
+    assert(palette1 !== palette2);
 });
 
 Deno.test('getPalette: returns independent copies even after modifications', () => {
-	const originalPalette = getPalette();
+    const originalPalette = getPalette();
 
-	const modifiedCopy = getPalette();
-	modifiedCopy.option = 'color: red';
+    const modifiedCopy = getPalette();
+    modifiedCopy.option = 'color: red';
 
-	const afterModify = getPalette();
-	assertEquals(afterModify.option, 'color: green');
-	assertEquals(originalPalette.option, 'color: green');
+    const afterModify = getPalette();
+    assertEquals(afterModify.option, 'color: green');
+    assertEquals(originalPalette.option, 'color: green');
 });
 
 Deno.test('setPalette: updates a single color in the palette', () => {
-	const originalPalette = getPalette();
-	assertEquals(originalPalette.section, 'color: yellow');
+    const originalPalette = getPalette();
+    assertEquals(originalPalette.section, 'color: yellow');
 
-	setPalette({ section: 'color: magenta' });
+    setPalette({ section: 'color: magenta' });
 
-	const after = getPalette();
-	assertEquals(after.section, 'color: magenta');
+    const after = getPalette();
+    assertEquals(after.section, 'color: magenta');
 
-	setPalette({ section: 'color: yellow' });
+    setPalette({ section: 'color: yellow' });
 });
 
 Deno.test('setPalette: updates multiple colors in the palette', () => {
-	setPalette({
-section: 'color: red',
-option: 'color: blue',
-value: 'color: orange',
-});
+    setPalette({
+        section: 'color: red',
+        option: 'color: blue',
+        value: 'color: orange',
+    });
 
-	const after = getPalette();
-	assertEquals(after.section, 'color: red');
-	assertEquals(after.option, 'color: blue');
-	assertEquals(after.value, 'color: orange');
-	assertEquals(after.default, 'display: revert');
-	assertEquals(after.usage, 'color: gray');
+    const after = getPalette();
+    assertEquals(after.section, 'color: red');
+    assertEquals(after.option, 'color: blue');
+    assertEquals(after.value, 'color: orange');
+    assertEquals(after.default, 'display: revert');
+    assertEquals(after.usage, 'color: gray');
 
-	setPalette({
-section: 'color: yellow',
-option: 'color: green',
-value: 'color: cyan; font-weight: bold',
-});
+    setPalette({
+        section: 'color: yellow',
+        option: 'color: green',
+        value: 'color: cyan; font-weight: bold',
+    });
 });
 
 Deno.test('setPalette: preserves unchanged palette values', () => {
-	const before = getPalette();
-	const originalUsage = before.usage;
+    const before = getPalette();
+    const originalUsage = before.usage;
 
-	setPalette({ section: 'color: purple' });
+    setPalette({ section: 'color: purple' });
 
-	const after = getPalette();
-	assertEquals(after.usage, originalUsage);
-	assertEquals(after.option, 'color: green');
-	assertEquals(after.value, 'color: cyan; font-weight: bold');
-	assertEquals(after.default, 'display: revert');
+    const after = getPalette();
+    assertEquals(after.usage, originalUsage);
+    assertEquals(after.option, 'color: green');
+    assertEquals(after.value, 'color: cyan; font-weight: bold');
+    assertEquals(after.default, 'display: revert');
 
-	setPalette({ section: 'color: yellow' });
+    setPalette({ section: 'color: yellow' });
 });
 
 Deno.test('getPalette: reflects changes made by setPalette', () => {
-	const newValue = 'color: pink; text-decoration: underline';
-	setPalette({ value: newValue });
+    const newValue = 'color: pink; text-decoration: underline';
+    setPalette({ value: newValue });
 
-	const palette = getPalette();
-	assertEquals(palette.value, newValue);
+    const palette = getPalette();
+    assertEquals(palette.value, newValue);
 
-	setPalette({ value: 'color: cyan; font-weight: bold' });
+    setPalette({ value: 'color: cyan; font-weight: bold' });
 });
 
 Deno.test('setPalette: with empty partial palette does nothing', () => {
-	const beforePalette = getPalette();
+    const beforePalette = getPalette();
 
-	setPalette({});
+    setPalette({});
 
-	const afterPalette = getPalette();
-	assertEquals(beforePalette, afterPalette);
+    const afterPalette = getPalette();
+    assertEquals(beforePalette, afterPalette);
 });
+

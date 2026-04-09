@@ -1,49 +1,31 @@
 /**
  * @module cli
  * Functions for creating a CLI from a TypeBox schema.  Standard options for help, version and
- * config file names are included, and additional options are created from the 'title' and 'description' 
+ * config file names are included, and additional options are created from the 'title' and 'description'
  * metadata in the schema.  The CLI is displayed with aligned columns and color formatting.
  */
-import * as path from 'node:path';
-import { readFileSync } from 'node:fs';
 import process from 'node:process';
 import type * as typebox from 'typebox';
+import { getAppMetadata, getProgramName } from './climetadata.ts';
+import {
+    compileHelp,
+    type HelpOptions as HelpBuilderOptions,
+    type HelpSchemaNode,
+    type Line,
+    type Palette,
+} from './clihelp.ts';
 import { type Result, failure, success } from './result.ts';
 import type { TConfig, TConfigElement } from './configmgr.ts';
-import { type ParseOptions, parseArgs } from './parseargs.ts';
-import { customParse } from './typeboxhelpers.ts';
+import { type ParseOptions, type ParseResults, parseArgs } from './parseargs.ts';
+import { parsePositionalParams } from './clipositional.ts';
+
+export { getRuntimeEnvironment } from './climetadata.ts';
+export type { Palette };
 
 /** Simplified version of TypeBox's TSchema, containing only fields relevant for CLI generation. */
-type TSchema = {
-    type: 'object' | 'array' | 'string' | 'number' | 'boolean';
-    properties?: { [key: string]: TSchema };
-    required?: string[];
-    items?: TSchema;
-    title?: string;
-    description?: string;
-    default?: boolean | number | string | object | null;
-    enum?: string[];
-};
+type SchemaNode = HelpSchemaNode;
 
 const MAX_COLUMN1_WIDTH = 35; // Max width for the first column in CLI help display
-
-/**
- * Color palette for displaying the CLI help text. Colors are defined as CSS strings that can be applied to
- * console.log statements.  The palette includes colors for different types of text, such as section headers,
- * option names, option values and usage instructions.
- */
-export type Palette = {
-    /** Default color for regular text (black or light-gray, depending on terminal background) */
-    default: string; 
-    /** Color for section headers */
-    section: string;
-    /** Color for option names */
-    option: string;
-    /** Color for option values */
-    value: string;
-    /** Color for usage instructions */
-    usage: string;
-};
 
 const palette: Palette = {
     default: 'display: revert',
@@ -53,7 +35,7 @@ const palette: Palette = {
     usage: 'color: gray',
 };
 
-/** 
+/**
  * Gets a copy of the current CLI color palette.
  * @returns The palette.
  */
@@ -68,21 +50,6 @@ export function getPalette(): Palette {
 export function setPalette(replacements: Partial<Palette>): void {
     Object.assign(palette, replacements);
 }
-
-/**
- * Line content and format for CLI help display. Either one or two columns are supported.
- * The format consists of one or more CSS style strings to apply to the line when displayed.
- * There should be one format string for each CSS placeholder (%c) in the line content.
- * @see https://docs.deno.com/examples/color_logging/
- */
-type Line = {
-    /** First column */
-    column1: string;
-    /** Second column (optional) */
-    column2?: string;
-    /** CSS format strings for the line */
-    format?: string | string[];
-};
 
 /** Optional settings for composing the introductory help section. */
 export type HelpOptions<PositionalSchema extends typebox.TSchema | undefined = undefined> = {
@@ -99,116 +66,19 @@ type PositionalParamsValue<PositionalSchema extends typebox.TSchema | undefined>
         ? typebox.Static<PositionalSchema>
         : TConfigElement[];
 
-/**
- * Formats default and enum values for a schema value, which is added to the end of the line in parentheses.
- * @param prop The schema property to format.
- * @returns An object containing the formatted suffix and the corresponding CSS format strings.
- */
-function buildHelpValueSuffix(prop: TSchema): { suffix: string; format: string[] } {
-    const format: string[] = [palette.default];
-    let suffix = '';
-
-    if (prop.default || prop.default === false || prop.enum) {
-        suffix = '(';
-
-        if (prop.enum) {
-            suffix += 'options: %c';
-            suffix += prop.enum.join(' ');
-            suffix += '%c';
-            format.push(palette.value, palette.default);
-        }
-
-        if (prop.default || prop.default === false) {
-            suffix += prop.enum ? '; default: %c' : 'default: %c';
-            suffix += `${prop.default}%c`;
-            format.push(palette.value, palette.default);
-        }
-
-        suffix += ')';
-    }
-
-    return { suffix, format };
-}
-
-/**
- * Utility function to get the short form of the program entry point.
- * @returns The module name.
- */
-function getProgramName() {
-    return path.basename(process.argv[1] ?? 'app.js');
-}
-
-/**
- * @ignore
- * Detects whether code is running under Deno or Node.js.
- * @returns 'deno' when Deno globals are present, otherwise 'node'.
- */
-export function getRuntimeEnvironment(): 'deno' | 'node' {
-    return typeof globalThis.Deno !== 'undefined' ? 'deno' : 'node';
-}
-
-/** App metadata taken from either package.json or Deno's import.meta */
-type AppMetadata = {
-    name: string;
-    version: string;
-    description: string;
+export type CliRuntime = {
+    getArgv: () => string[];
+    log: (...args: unknown[]) => void;
+    exit: (code?: number) => never | void;
 };
 
-/**
- * Looks in deno.json (Deno) or package.json (Node.js) for app metadata, i.e. name, version and description, 
- * which are used in the CLI help and version display.  Defaults are '[app]', '0.0.0' and ''.
- * @returns The app metadata.
- */
-function getAppMetadata(): AppMetadata {
-    const runtime = getRuntimeEnvironment();
-
-    if (runtime === 'deno') {
-        // In Deno, read from deno.json
-        try {
-            const denoPath = new URL('deno.json', import.meta.url);
-            const denoText = Deno.readTextFileSync(denoPath);
-            const denoConfig = JSON.parse(denoText) as {
-                name?: string;
-                version?: string;
-                description?: string;
-            };
-            return {
-                name: denoConfig.name ?? '[app]',
-                version: denoConfig.version ?? '0.0.0',
-                description: denoConfig.description ?? ''
-            };
-        } catch {
-            return {
-                name: '[app]',
-                version: '0.0.0',
-                description: ''
-            };
-        }
-    } else {
-        // In Node.js, read from package.json
-        try {
-            const moduleDir = path.dirname(new URL(import.meta.url).pathname);
-            const pkgPath = path.join(moduleDir, '../package.json');
-            const pkgContent = readFileSync(pkgPath, 'utf-8');
-            const pkgConfig = JSON.parse(pkgContent) as {
-                name?: string;
-                version?: string;
-                description?: string;
-            };
-            return {
-                name: pkgConfig.name ?? '[app]',
-                version: pkgConfig.version ?? '0.0.0',
-                description: pkgConfig.description ?? ''
-            };
-        } catch {
-            return {
-                name: '[app]',
-                version: '0.0.0',
-                description: ''
-            };
-        }
-    }
-}
+const defaultCliRuntime: CliRuntime = {
+    getArgv: () => process.argv,
+    log: (...args: unknown[]) => {
+        console.log(...args);
+    },
+    exit: (code?: number) => process.exit(code),
+};
 
 /**
  * Compiles parse options from a schema by identifying array properties (which can accept 
@@ -220,7 +90,7 @@ function compileParseOptions(schema: typebox.TSchema): ParseOptions {
     const collect: string[] = [];
 
     // Helper function that recursively traverses the schema to find array properties.
-    function traverseSchema(section: string | undefined, schema: TSchema): void {
+    function traverseSchema(section: string | undefined, schema: SchemaNode): void {
         if (schema.properties) {
             for (const [key, prop] of Object.entries(schema.properties)) {
                 const subsection = section ? `${section}.${key}` : key;
@@ -234,7 +104,7 @@ function compileParseOptions(schema: typebox.TSchema): ParseOptions {
         }
     }
 
-    traverseSchema(undefined, schema as unknown as TSchema);
+    traverseSchema(undefined, schema as unknown as SchemaNode);
 
     // Merge with standard options
     return {
@@ -244,254 +114,10 @@ function compileParseOptions(schema: typebox.TSchema): ParseOptions {
 }
 
 /**
- * Traverses the provided TypeBox schema and compiles CLI help text based on the 
- * schema's properties and their descriptions.  The schema is expected to be
- * a top-level object schema whose property names become the CLI flag prefixes
- * (e.g. a property `service` produces options such as `--service.enabled`).
- * @param schema The top-level schema.
- * @returns The compiled CLI data.
- */
-function compileOptionsHelp(schema: typebox.TSchema): Line[] {
-    const lines: Line[] = [];
-
-    // Helper function to add a CLI option line for a schema property that has a description.
-    function annotateOption(option: string, prop: TSchema) {
-        // If this is a section description, add it and return.
-        if (prop.type === 'object' && prop.description) {
-            lines.push({ column1: prop.description });
-            return;
-        }
-
-        const column1 = `  %c--${option}`;
-        const format = [palette.option, palette.default];
-        const { suffix, format: valueFormat } = buildHelpValueSuffix(prop);
-        format.push(...valueFormat.slice(1));
-
-        const column2 = `%c${prop.description} ${suffix}`;
-        lines.push({ column1, column2, format });
-    }
-
-    // Helper function that recursively traverses the schema,
-    // looking for properties with descriptions.
-    function traverseSchema(section: string | undefined, schema: TSchema) {
-        if (schema.properties) {
-            for (const [key, prop] of Object.entries(schema.properties)) {
-                if (prop.title) {
-                    lines.push({
-                        column1: '\n%c' + prop.title,
-                        format: [palette.section],
-                    });
-                }
-
-                const subsection = section ? `${section}.${key}` : key;
-                if (prop.items) { // 'items' indicates an array
-                    if (prop.items.description) { // Description may be on the array items...
-                        annotateOption(subsection, prop.items);
-                    } else if (prop.description) { // ...or on the array itself
-                        annotateOption(subsection, prop);
-                    }
-                    traverseSchema(subsection, prop.items);
-                } else {
-                    if (prop.description) {
-                        annotateOption(subsection, prop);
-                    }
-                    traverseSchema(subsection, prop);
-                }
-            }
-        }
-    }
-
-    // Add any top-level description as an introductory section.
-    const simplifiedSchema = schema as unknown as TSchema; // Coerce to our simplified TSchema type
-    if (simplifiedSchema.title) {
-        lines.push({
-            column1: '\n%c' + simplifiedSchema.title,
-            format: [palette.section],
-        });
-    }
-    if (simplifiedSchema.description) {
-        lines.push({ column1: simplifiedSchema.description });
-    }
-
-    traverseSchema(undefined, simplifiedSchema); 
-    return lines;
-}
-
-/**
- * Compiles help lines for positional parameters based on the provided schema.
- * @param schema The schema defining the positional parameters.
- * @returns An array of help lines for the positional parameters.
- */
-function compilePositionalHelp(schema: typebox.TSchema | undefined): Line[] {
-    if (!schema) {
-        return [];
-    }
-
-    const positional = schema as unknown as TSchema;
-    if (positional.type !== 'object' || !positional.properties) {
-        return [];
-    }
-
-    const sectionTitle = positional.title ?? 'Positional parameters';
-    const lines: Line[] = [
-        {
-            column1: `\n%c${sectionTitle}`,
-            format: [palette.section],
-        },
-    ];
-
-    if (positional.description) {
-        lines.push({ column1: positional.description });
-    }
-
-    for (const [key, prop] of Object.entries(positional.properties)) {
-        const label = prop.items ? `${key}...` : key;
-        const { suffix, format: valueFormat } = buildHelpValueSuffix(prop);
-        const column2Body = prop.description ?? '';
-        const spacer = column2Body && suffix ? ' ' : '';
-        lines.push({
-            column1: `  %c${label}`,
-            column2: `%c${column2Body}${spacer}${suffix}`,
-            format: [palette.option, ...valueFormat],
-        });
-    }
-
-    return lines;
-}
-
-/**
- * Gets standard option help lines for the CLI, including help, version and config file names.
- * @returns Array of help lines for standard options.
- */
-function getStandardOptions(): Line[] {
-    return [
-        {
-            column1: '\n%cStandard options',
-            format: [palette.section],
-        },
-        {
-            column1: '  %c--version, -v',
-            column2: '%cDisplay version and exit',
-            format: [palette.option, palette.default],
-        },
-        {
-            column1: '  %c--help, -h',
-            column2: '%cDisplay this help message and exit',
-            format: [palette.option, palette.default],
-        },
-        {
-            column1: '  %c--config, -c',
-            column2: '%cConfig file(s) (default: %c./config/default.json5%c, %c./config/local.json5%c)',
-            format: [
-                palette.option, palette.default,
-                palette.value, palette.default,
-                palette.value, palette.default,
-            ],
-        },
-    ];
-}
-
-/**
- * Builds a formatted positional parameters string for the usage line.
- * Required parameters are shown as-is, optional parameters are enclosed in square brackets,
- * and array parameters are followed by an ellipsis.
- * @param schema The schema defining the positional parameters.
- * @returns A formatted string for the usage line, e.g. "input [mode] [rest...]".
- */
-function buildPositionalParamsString(schema: typebox.TSchema | undefined): string {
-    if (!schema) {
-        return '';
-    }
-
-    const positional = schema as unknown as TSchema;
-    if (positional.type !== 'object' || !positional.properties) {
-        return '';
-    }
-
-    // Put required parameters first, followed by optional ones.
-    const propertyKeys = Object.keys(positional.properties);
-    const requiredSet = new Set(positional.required ?? propertyKeys);
-    const orderedKeys = [
-        ...propertyKeys.filter((key) => requiredSet.has(key)),
-        ...propertyKeys.filter((key) => !requiredSet.has(key)),
-    ];
-
-    const parts: string[] = [];
-    for (const key of orderedKeys) {
-        const prop = positional.properties[key];
-        const isRequired = requiredSet.has(key);
-        const isArray = prop.items !== undefined;
-        const suffix = isArray ? '...' : '';
-        const param = `${key}${suffix}`;
-        parts.push(isRequired ? param : `[${param}]`);
-    }
-
-    return parts.join(' ');
-}
-
-/**
- * Creates the CLI introductory section.
- * @param options Optional intro settings.
- * @param options.intro Brief description of what the app does. If omitted, this is taken from the
- * "description" field in deno.json/package.json, or else the "name" field, else the program name.
- * @param options.usage E.g. 'deno foo.ts [OPTIONS]'. If omitted, this is constructed from the program name.
- * @param options.positionalSchema Schema for positional (non-flag) parameters, used to build the usage line.   
- * @returns Compiled CLI data.
- */
-function createIntro(options: HelpOptions<typebox.TSchema | undefined> = {}): Line[] {
-    const { intro, usage } = options;
-    const runtimeCommand = getRuntimeEnvironment() === 'deno' ? 'deno' : 'node';
-    const appMeta = getAppMetadata();
-
-    let usageLine: string;
-    if (usage) {
-        usageLine = usage;
-    } else {
-        const positionalSuffix = buildPositionalParamsString(options.positionalSchema);
-        const positionalPart = positionalSuffix ? ` ${positionalSuffix}` : '';
-        usageLine = `${runtimeCommand} ${getProgramName()} [OPTIONS]${positionalPart}`;
-    }
-
-    return [
-        {
-            column1: intro 
-                ? intro 
-                : appMeta.description 
-                    ? appMeta.description 
-                    : appMeta.name 
-                        ? appMeta.name 
-                        : getProgramName(),
-        },
-        {
-            column1: `\n%cUsage: %c${usageLine}`,
-            format: [palette.usage, palette.default],
-        },
-    ];
-}
-
-/**
- * Compiles complete CLI help output by combining intro, standard options, and schema options.
- * @param schema The top-level schema for application-specific options.
- * @param options Optional intro settings.
- * @returns Compiled help lines.
- */
-function compileHelp<PositionalSchema extends typebox.TSchema | undefined>(
-    schema: typebox.TSchema,
-    options: HelpOptions<PositionalSchema> = {} as HelpOptions<PositionalSchema>,
-): Line[] {
-    return [
-        ...createIntro(options),
-        ...compilePositionalHelp(options.positionalSchema),
-        ...getStandardOptions(),
-        ...compileOptionsHelp(schema),
-    ];
-}
-
-/**
  * Display help text for CLI usage, aligning columns and applying formatting.
  * @param lines Columns to display, with optional formatting instructions.
  */
-function displayHelpLines(lines: Line[]): void {
+function displayHelpLines(lines: Line[], log: (...args: unknown[]) => void): void {
     // For multi-column lines, calculate max width of column 1 and pad it for alignment
     const multiColumn = lines.filter((line) => line.column2 !== undefined);
     let maxColumn1Width = Math.max(...multiColumn.map((line) => line.column1.length));
@@ -505,12 +131,12 @@ function displayHelpLines(lines: Line[]): void {
             : line.column1;
         if (line.format) {
             if (Array.isArray(line.format)) {
-                console.log(theLine, ...line.format);
+                log(theLine, ...line.format);
             } else {
-                console.log(theLine, line.format);
+                log(theLine, line.format);
             }
         } else {
-            console.log(theLine);
+            log(theLine);
         }
     }
 }
@@ -518,12 +144,50 @@ function displayHelpLines(lines: Line[]): void {
 /**
  * Display the program version, which is taken from the deno.json or package.json file.
  */
-function displayVersionInfo(): void {
+function displayVersionInfo(log: (...args: unknown[]) => void): void {
     const appMeta = getAppMetadata();
-    console.log(
+    log(
         appMeta.name ?? getProgramName(),
         appMeta.version ?? '0.0.0',
     );
+}
+
+type BuiltinAction =
+    | { type: 'none' }
+    | { type: 'version' }
+    | { type: 'help'; lines: Line[] };
+
+function evaluateBuiltinAction(
+    version: unknown,
+    help: unknown,
+    schema: typebox.TSchema,
+    helpOptions: HelpBuilderOptions,
+    currentPalette: Palette,
+): BuiltinAction {
+    if (version) {
+        return { type: 'version' };
+    }
+
+    if (help) {
+        return {
+            type: 'help',
+            lines: compileHelp(schema, helpOptions, currentPalette),
+        };
+    }
+
+    return { type: 'none' };
+}
+
+function executeBuiltinAction(action: BuiltinAction, runtime: CliRuntime): void {
+    if (action.type === 'version') {
+        displayVersionInfo(runtime.log);
+        runtime.exit(0);
+    }
+
+    if (action.type === 'help') {
+        displayHelpLines(action.lines, runtime.log);
+        runtime.exit(0);
+    }
 }
 
 /**
@@ -563,7 +227,8 @@ function removeEmptyProperties(obj: TConfig): TConfig | undefined {
 export class Cli<PositionalSchema extends typebox.TSchema | undefined = undefined> {
     #schema: typebox.TSchema;
     #helpOptions: HelpOptions<PositionalSchema>;
-    #positionalParams: TConfigElement[] | undefined;
+    #runtime: CliRuntime;
+    #parsedArgs: ParseResults | undefined;
 
     /**
      * Constructor.
@@ -573,9 +238,19 @@ export class Cli<PositionalSchema extends typebox.TSchema | undefined = undefine
     constructor(
         schema: typebox.TSchema,
         options: HelpOptions<PositionalSchema> = {} as HelpOptions<PositionalSchema>,
+        runtime: CliRuntime = defaultCliRuntime,
     ) {
         this.#schema = schema;
         this.#helpOptions = options;
+        this.#runtime = runtime;
+    }
+
+    #getArgs(): ParseResults {
+        if (!this.#parsedArgs) {
+            const parseOptions = compileParseOptions(this.#schema);
+            this.#parsedArgs = parseArgs(this.#runtime.getArgv().slice(2), parseOptions);
+        }
+        return this.#parsedArgs;
     }
 
     /**
@@ -583,73 +258,14 @@ export class Cli<PositionalSchema extends typebox.TSchema | undefined = undefine
      * @returns Array of positional parameter values.
      */
     getPositionalParams(): Result<PositionalParamsValue<PositionalSchema>, string> {
-        if (!this.#positionalParams) {
-            const parseOptions = compileParseOptions(this.#schema);
-            const args = parseArgs(process.argv.slice(2), parseOptions);
-            this.#positionalParams = args._;
-        }
-
+        const positionals = this.#getArgs()._;
         const positionalSchema = this.#helpOptions.positionalSchema;
         if (!positionalSchema) {
-            return success(this.#positionalParams as PositionalParamsValue<PositionalSchema>);
+            return success(positionals as PositionalParamsValue<PositionalSchema>);
         }
 
-        const rawSchema = positionalSchema as unknown as TSchema;
-        if (rawSchema.type !== 'object' || !rawSchema.properties) {
-            return failure('positionalSchema must be an object schema');
-        }
-
-        const propertyKeys = Object.keys(rawSchema.properties);
-        const requiredSet = new Set(rawSchema.required ?? propertyKeys);
-        const orderedKeys = [
-            ...propertyKeys.filter((key) => requiredSet.has(key)),
-            ...propertyKeys.filter((key) => !requiredSet.has(key)),
-        ];
-
-        const mapped: Record<string, TConfigElement> = {};
-        let position = 0;
-
-        for (let i = 0; i < orderedKeys.length; i += 1) {
-            const key = orderedKeys[i];
-            const prop = rawSchema.properties[key];
-            const isRequired = requiredSet.has(key);
-            const isLast = i === orderedKeys.length - 1;
-            const isArrayParam = prop.items !== undefined;
-
-            if (isArrayParam && !isLast) {
-                return failure('Only the last positional parameter may be an array');
-            }
-
-            if (isArrayParam) {
-                const rest = this.#positionalParams.slice(position);
-                if (rest.length > 0 || isRequired) {
-                    mapped[key] = rest;
-                }
-                position = this.#positionalParams.length;
-                continue;
-            }
-
-            if (position < this.#positionalParams.length) {
-                mapped[key] = this.#positionalParams[position];
-                position += 1;
-                continue;
-            }
-
-            if (isRequired && prop.default === undefined) {
-                return failure(`Missing required positional parameter: ${key}`);
-            }
-        }
-
-        if (position < this.#positionalParams.length) {
-            return failure('Too many positional parameters');
-        }
-
-        try {
-            return success(customParse(positionalSchema, mapped) as PositionalParamsValue<PositionalSchema>);
-        } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            return failure(message);
-        }
+        const parsed = parsePositionalParams(positionalSchema, positionals);
+        return parsed as Result<PositionalParamsValue<PositionalSchema>, string>;
     }
 
     /**
@@ -660,23 +276,17 @@ export class Cli<PositionalSchema extends typebox.TSchema | undefined = undefine
         configFiles: string[];
         additionalConfig: TConfig | undefined;
     }, string> {
-        const parseOptions = compileParseOptions(this.#schema);
-        const args = parseArgs(process.argv.slice(2), parseOptions);
-
         // Remove standard options from the args object, leaving only those from the config schema.
-        const { _, help, version, config, ...configArgs } = args;
-        this.#positionalParams = _;
+        const { _: _, help, version, config, ...configArgs } = this.#getArgs();
 
-        if (version) {
-            displayVersionInfo();
-            process.exit(0);
-        }
-
-        if (help) {
-            const lines = compileHelp(this.#schema, this.#helpOptions);
-            displayHelpLines(lines);
-            process.exit(0);
-        }
+        const builtinAction = evaluateBuiltinAction(
+            version,
+            help,
+            this.#schema,
+            this.#helpOptions,
+            palette,
+        );
+        executeBuiltinAction(builtinAction, this.#runtime);
 
         let configFiles: string[] = [];
 
