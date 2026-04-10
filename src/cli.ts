@@ -27,7 +27,7 @@ type SchemaNode = HelpSchemaNode;
 
 const MAX_COLUMN1_WIDTH = 35; // Max width for the first column in CLI help display
 
-const palette: Palette = {
+const palette: Palette = { // Color palette for help display
     default: 'display: revert',
     section: 'color: yellow',
     option: 'color: green',
@@ -61,11 +61,28 @@ export type HelpOptions<PositionalSchema extends typebox.TSchema | undefined = u
     positionalSchema?: PositionalSchema;
 };
 
+/** 
+ * Type representing the resolved values of positional parameters based on the schema provided.
+ * 
+ * If a positional schema is provided, this type resolves to the static type of that schema
+ * as defined by TypeBox.  If no positional schema is provided, it defaults to an array of
+ * TConfigElement, which represents the generic configuration elements that can be passed
+ * as positional arguments.
+ */
 type PositionalParamsValue<PositionalSchema extends typebox.TSchema | undefined> =
     PositionalSchema extends typebox.TSchema
         ? typebox.Static<PositionalSchema>
         : TConfigElement[];
 
+/**
+ * Interface representing the runtime environment for the CLI, abstracting over
+ * process.argv, console logging, and process exit so that the CLI can be tested
+ * or run in different environments (e.g., Deno vs Node.js) without directly
+ * depending on the global process object.
+ * This allows the CLI logic to be decoupled from the environment so that it can be
+ * invoked in unit tests with controlled arguments and output, or run in environments
+ * where the global process object is not available, such as Deno.
+ */
 export type CliRuntime = {
     getArgv: () => string[];
     log: (...args: unknown[]) => void;
@@ -74,9 +91,7 @@ export type CliRuntime = {
 
 const defaultCliRuntime: CliRuntime = {
     getArgv: () => process.argv,
-    log: (...args: unknown[]) => {
-        console.log(...args);
-    },
+    log: (...args: unknown[]) => console.log(...args),
     exit: (code?: number) => process.exit(code),
 };
 
@@ -117,7 +132,7 @@ function compileParseOptions(schema: typebox.TSchema): ParseOptions {
  * Display help text for CLI usage, aligning columns and applying formatting.
  * @param lines Columns to display, with optional formatting instructions.
  */
-function displayHelpLines(lines: Line[], log: (...args: unknown[]) => void): void {
+function displayHelp(lines: Line[], log: (...args: unknown[]) => void): void {
     // For multi-column lines, calculate max width of column 1 and pad it for alignment
     const multiColumn = lines.filter((line) => line.column2 !== undefined);
     let maxColumn1Width = Math.max(...multiColumn.map((line) => line.column1.length));
@@ -144,50 +159,12 @@ function displayHelpLines(lines: Line[], log: (...args: unknown[]) => void): voi
 /**
  * Display the program version, which is taken from the deno.json or package.json file.
  */
-function displayVersionInfo(log: (...args: unknown[]) => void): void {
+function displayVersion(log: (...args: unknown[]) => void): void {
     const appMeta = getAppMetadata();
     log(
         appMeta.name ?? getProgramName(),
         appMeta.version ?? '0.0.0',
     );
-}
-
-type BuiltinAction =
-    | { type: 'none' }
-    | { type: 'version' }
-    | { type: 'help'; lines: Line[] };
-
-function evaluateBuiltinAction(
-    version: unknown,
-    help: unknown,
-    schema: typebox.TSchema,
-    helpOptions: HelpBuilderOptions,
-    currentPalette: Palette,
-): BuiltinAction {
-    if (version) {
-        return { type: 'version' };
-    }
-
-    if (help) {
-        return {
-            type: 'help',
-            lines: compileHelp(schema, helpOptions, currentPalette),
-        };
-    }
-
-    return { type: 'none' };
-}
-
-function executeBuiltinAction(action: BuiltinAction, runtime: CliRuntime): void {
-    if (action.type === 'version') {
-        displayVersionInfo(runtime.log);
-        runtime.exit(0);
-    }
-
-    if (action.type === 'help') {
-        displayHelpLines(action.lines, runtime.log);
-        runtime.exit(0);
-    }
 }
 
 /**
@@ -234,6 +211,8 @@ export class Cli<PositionalSchema extends typebox.TSchema | undefined = undefine
      * Constructor.
      * @param schema The top-level schema for application-specific options.
      * @param options Optional help settings used to build the help display.
+     * @param runtime Optional runtime environment abstraction that allows the CLI
+     * to be executed in different environments. Used primarily for testing.
      */
     constructor(
         schema: typebox.TSchema,
@@ -254,8 +233,12 @@ export class Cli<PositionalSchema extends typebox.TSchema | undefined = undefine
     }
 
     /**
-     * Returns the positional (non-flag) arguments from the CLI.
-     * @returns Array of positional parameter values.
+     * Returns the positional (non-flag) arguments from the CLI.  If a positional schema
+     * was provided in the help options, the returned values will be parsed and validated
+     * against that schema; otherwise, the raw positional arguments are returned as an array.
+     * @returns Result object containing either the parsed positional parameters (if a schema
+     * was provided), or else an array of the raw positional arguments. If the arguments fail
+     * validation, a string describing the validation error will be returned.
      */
     getPositionalParams(): Result<PositionalParamsValue<PositionalSchema>, string> {
         const positionals = this.#getArgs()._;
@@ -277,16 +260,18 @@ export class Cli<PositionalSchema extends typebox.TSchema | undefined = undefine
         additionalConfig: TConfig | undefined;
     }, string> {
         // Remove standard options from the args object, leaving only those from the config schema.
-        const { _: _, help, version, config, ...configArgs } = this.#getArgs();
+        const { _, help, version, config, ...configArgs } = this.#getArgs();
 
-        const builtinAction = evaluateBuiltinAction(
-            version,
-            help,
-            this.#schema,
-            this.#helpOptions,
-            palette,
-        );
-        executeBuiltinAction(builtinAction, this.#runtime);
+        if (version) {
+            displayVersion(this.#runtime.log);
+            this.#runtime.exit(0);
+        }
+
+        if (help) {
+            const lines = compileHelp(this.#schema, this.#helpOptions, palette);
+            displayHelp(lines, this.#runtime.log);
+            this.#runtime.exit(0);
+        }
 
         let configFiles: string[] = [];
 
