@@ -6,20 +6,19 @@
  */
 import process from 'node:process';
 import type * as typebox from 'typebox';
-import { getAppMetadata, getProgramName } from './climetadata.ts';
+import { getAppMetadata, getProgramName } from './cli/metadata.ts';
 import {
     compileHelp,
-    type HelpOptions as HelpBuilderOptions,
     type HelpSchemaNode,
     type Line,
     type Palette,
-} from './clihelp.ts';
+} from './cli/help.ts';
 import { type Result, failure, success } from './result.ts';
 import type { TConfig, TConfigElement } from './configmgr.ts';
-import { type ParseOptions, type ParseResults, parseArgs } from './parseargs.ts';
-import { parsePositionalParams } from './clipositional.ts';
+import { type ParseOptions, type ParseResults, parseArgs } from './cli/parseargs.ts';
+import { parsePositionalParams } from './cli/positional.ts';
 
-export { getRuntimeEnvironment } from './climetadata.ts';
+export { getRuntimeEnvironment } from './cli/metadata.ts';
 export type { Palette };
 
 /** Simplified version of TypeBox's TSchema, containing only fields relevant for CLI generation. */

@@ -1,5 +1,5 @@
 import type * as typebox from 'typebox';
-import { getAppMetadata, getProgramName, getRuntimeEnvironment } from './climetadata.ts';
+import { getAppMetadata, getProgramName, getRuntimeEnvironment } from './metadata.ts';
 
 export type HelpSchemaNode = {
     type: 'object' | 'array' | 'string' | 'number' | 'boolean';

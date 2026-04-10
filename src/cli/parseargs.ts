@@ -26,7 +26,7 @@
  *   results object.
  */
 
-import type { TConfig, TConfigElement } from './configmgr.ts';
+import type { TConfig, TConfigElement } from '../configmgr.ts';
 
 /** Options for parsing command-line arguments */
 export type ParseOptions = {

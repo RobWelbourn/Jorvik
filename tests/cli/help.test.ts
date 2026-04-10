@@ -11,7 +11,7 @@ import {
     getOrderedPositionalParams,
     type HelpSchemaNode,
     type Palette,
-} from '../src/clihelp.ts';
+} from '../../src/cli/help.ts';
 
 const emptyPalette: Palette = {
     default: '',

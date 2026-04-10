@@ -1,9 +1,9 @@
 import type * as typebox from 'typebox';
 import { ParseError } from 'typebox/value';
-import type { TConfigElement } from './configmgr.ts';
-import { failure, type Result, success } from './result.ts';
-import { getOrderedPositionalParams, type HelpSchemaNode } from './clihelp.ts';
-import { customParse, formatParseError } from './typeboxhelpers.ts';
+import type { TConfigElement } from '../configmgr.ts';
+import { failure, type Result, success } from '../result.ts';
+import { getOrderedPositionalParams, type HelpSchemaNode } from './help.ts';
+import { customParse, formatParseError } from '../typeboxhelpers.ts';
 
 export function parsePositionalParams<Schema extends typebox.TSchema>(
     schema: Schema,

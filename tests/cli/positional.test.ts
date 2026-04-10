@@ -5,7 +5,7 @@
 
 import { assert, assertEquals } from '@std/assert';
 import { Type } from 'typebox';
-import { parsePositionalParams } from '../src/clipositional.ts';
+import { parsePositionalParams } from '../../src/cli/positional.ts';
 
 Deno.test('parsePositionalParams: maps positionals to schema properties in order', () => {
     const schema = Type.Object({

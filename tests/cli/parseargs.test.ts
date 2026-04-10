@@ -1,5 +1,5 @@
 import { assertEquals } from '@std/assert';
-import { parseArgs } from '../src/parseargs.ts';
+import { parseArgs } from '../../src/cli/parseargs.ts';
 
 Deno.test('parseArgs: parses long flags and positional arguments', () => {
     const parsed = parseArgs(['--name=jorvik', '--port', '8080', 'input.json']);
