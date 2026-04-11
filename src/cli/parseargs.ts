@@ -1,5 +1,5 @@
 /**
- * @module parseargs
+ * @module cli/parseargs
  * Provides a simple command line parser that complements the config file system.  It behaves similarly to the
  * Deno command line parser, but with a more limited set of features, given that TypeBox schemas are used to 
  * define the expected types of flags and arguments.
@@ -44,10 +44,12 @@ export type ParseResults = {
     [key: string]: TConfigElement;
 };
 
+/** Is this a non-null, non-array object?  */
 function isObjectLike(value: TConfigElement | undefined): value is TConfig {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** Attempt to coerce a string value to a number, returning either the number if numeric, else the original string */
 function coerceValue(value: string): TConfigElement {
     if (value.length > 0) {
         const parsedNumber = Number(value);
@@ -58,6 +60,7 @@ function coerceValue(value: string): TConfigElement {
     return value;
 }
 
+/** Sets a nested value in the results object, creating intermediate objects as needed */
 function setNestedValue(target: ParseResults, key: string, value: TConfigElement): void {
     const parts = key.split('.');
     let cursor: TConfig = target;
@@ -74,6 +77,10 @@ function setNestedValue(target: ParseResults, key: string, value: TConfigElement
     cursor[parts[parts.length - 1]] = value;
 }
 
+/** 
+ * Retrieves a nested value from the results object, returning undefined if any 
+ * intermediate property is missing or not an object 
+ */
 function getNestedValue(target: ParseResults, key: string): TConfigElement | undefined {
     const parts = key.split('.');
     let cursor: TConfigElement = target;

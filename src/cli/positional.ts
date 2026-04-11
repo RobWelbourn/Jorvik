@@ -1,3 +1,7 @@
+/**
+ * @module cli/positional
+ * Functions for parsing positional parameters from the command line according to a TypeBox schema.
+ */
 import type * as typebox from 'typebox';
 import { ParseError } from 'typebox/value';
 import type { TConfigElement } from '../configmgr.ts';
@@ -5,6 +9,12 @@ import { failure, type Result, success } from '../result.ts';
 import { getOrderedPositionalParams, type HelpSchemaNode } from './help.ts';
 import { customParse, formatParseError } from '../typeboxhelpers.ts';
 
+/** 
+ * Parses positional parameters from the command line according to a TypeBox schema.
+ * @param schema The TypeBox schema describing the expected positional parameters.
+ * @param positionalParams The array of positional parameters from the command line.
+ * @returns A Result containing either the parsed parameters or an error string.
+ */
 export function parsePositionalParams<Schema extends typebox.TSchema>(
     schema: Schema,
     positionalParams: TConfigElement[],

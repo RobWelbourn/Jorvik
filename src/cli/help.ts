@@ -1,6 +1,12 @@
+/**
+ * @module cli/help
+ * Functions for generating CLI help text from a TypeBox schema, including formatting
+ * and alignment of options, usage, and positional parameters.
+ */
 import type * as typebox from 'typebox';
 import { getAppMetadata, getProgramName, getRuntimeEnvironment } from './metadata.ts';
 
+/** Simplified version of TypeBox's TSchema, containing only fields relevant for CLI help generation. */
 export type HelpSchemaNode = {
     type: 'object' | 'array' | 'string' | 'number' | 'boolean';
     properties?: { [key: string]: HelpSchemaNode };
@@ -12,23 +18,37 @@ export type HelpSchemaNode = {
     enum?: string[];
 };
 
+/** Represents a line in the CLI help output. */
 export type Line = {
+    /** First or only column */
     column1: string;
+    /** Optional second column */
     column2?: string;
+    /** Optional single or multiple CSS format strings */
     format?: string | string[];
 };
 
+/** Color palette for the console output, using CSS strings. */
 export type Palette = {
+    /** Resets to the default console color */
     default: string;
+    /** Section header -- defaults to yellow */
     section: string;
+    /** Option flags -- defaults to green */
     option: string;
+    /** Values for options -- defaults to cyan */
     value: string;
+    /** Usage prefix -- defaults to grey */
     usage: string;
 };
 
+/** Options for compiling the help text. */
 export type HelpOptions = {
+    /** Introductory line of text displayed at the top of the help output. */
     intro?: string;
+    /** Usage line, e.g. `deno foo.ts [OPTIONS]`. */
     usage?: string;
+    /** Schema for positional (non-flag) parameters. */
     positionalSchema?: typebox.TSchema;
 };
 
@@ -40,6 +60,12 @@ export type OrderedPositionalParam = {
     isLast: boolean;
 };
 
+/**
+ * Get the positional parameters from a TypeBox schema in the order they should appear
+ * on the command line, respecting required vs optional parameters and array types.
+ * @param schema The TypeBox schema.
+ * @returns An array of the parameters.
+ */
 export function getOrderedPositionalParams(schema: HelpSchemaNode): OrderedPositionalParam[] {
     if (!schema.properties) {
         return [];
@@ -61,6 +87,12 @@ export function getOrderedPositionalParams(schema: HelpSchemaNode): OrderedPosit
     }));
 }
 
+/**
+ * Creates parenthesized suffixes for enum and default values.
+ * @param prop The property
+ * @param palette The current palette
+ * @returns The suffix string
+ */
 function buildHelpValueSuffix(prop: HelpSchemaNode, palette: Palette): { suffix: string; format: string[] } {
     const format: string[] = [palette.default];
     let suffix = '';
@@ -86,7 +118,12 @@ function buildHelpValueSuffix(prop: HelpSchemaNode, palette: Palette): { suffix:
 
     return { suffix, format };
 }
-
+/**
+ * Compiles the help text for the CLI options.
+ * @param schema The TypeBox schema for the options.
+ * @param palette The current palette
+ * @returns The array of help lines
+ */
 function compileOptionsHelp(schema: typebox.TSchema, palette: Palette): Line[] {
     const lines: Line[] = [];
 
@@ -148,6 +185,12 @@ function compileOptionsHelp(schema: typebox.TSchema, palette: Palette): Line[] {
     return lines;
 }
 
+/**
+ * Compiles the help section for positional parameters.
+ * @param schema The positional parameter schema
+ * @param palette The current palette
+ * @returns The array of help lines
+ */
 function compilePositionalHelp(schema: typebox.TSchema | undefined, palette: Palette): Line[] {
     if (!schema) {
         return [];
@@ -185,6 +228,12 @@ function compilePositionalHelp(schema: typebox.TSchema | undefined, palette: Pal
     return lines;
 }
 
+/**
+ * Create the standard options section of the help text, including --version,
+ * --help, and --config.
+ * @param palette The current palette
+ * @returns The array of help lines
+ */
 function getStandardOptions(palette: Palette): Line[] {
     return [
         {
@@ -213,6 +262,11 @@ function getStandardOptions(palette: Palette): Line[] {
     ];
 }
 
+/**
+ * Builds the string representing the positional parameters for the usage line.
+ * @param schema The positional parameter schema
+ * @returns The parameter string
+ */
 function buildPositionalParamsString(schema: typebox.TSchema | undefined): string {
     if (!schema) {
         return '';
@@ -234,6 +288,13 @@ function buildPositionalParamsString(schema: typebox.TSchema | undefined): strin
     return parts.join(' ');
 }
 
+/**
+ * Creates the introductory section of the help text, including the intro
+ * message and usage line.
+ * @param options Intro and usage options
+ * @param palette The current palette
+ * @returns The array of help lines
+ */
 function createIntro(options: HelpOptions, palette: Palette): Line[] {
     const { intro, usage } = options;
     const runtimeCommand = getRuntimeEnvironment() === 'deno' ? 'deno' : 'node';
@@ -265,6 +326,14 @@ function createIntro(options: HelpOptions, palette: Palette): Line[] {
     ];
 }
 
+/**
+ * Compliles the help text, comprised of the intro, usage, positional parameters,
+ * standard options, and schema-defined options.
+ * @param schema The configuration schema
+ * @param options Intro and usage options, and positional parameter schema
+ * @param palette The current palette
+ * @returns The array of help lines
+ */
 export function compileHelp(
     schema: typebox.TSchema,
     options: HelpOptions,

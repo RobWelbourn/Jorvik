@@ -1,3 +1,8 @@
+/**
+ * @module cli/metadata
+ * Functions for reading application metadata from package.json (Node.js) or deno.json (Deno)
+ * and determining the runtime environment.
+ */
 import * as path from 'node:path';
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
