@@ -55,12 +55,12 @@ export function parsePositionalParams<Schema extends typebox.TSchema>(
         }
 
         if (isRequired && prop.default === undefined) {
-            return failure(`Missing required positional parameter: ${key}`);
+            return failure(`Missing required parameter: ${key}`);
         }
     }
 
     if (position < positionalParams.length) {
-        return failure('Too many positional parameters');
+        return failure('Too many parameters');
     }
 
     try {
