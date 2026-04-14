@@ -32,54 +32,31 @@ export function getRuntimeEnvironment(): 'deno' | 'node' {
 
 /**
  * Looks in deno.json (Deno) or package.json (Node.js) for app metadata, i.e. name, version and description,
- * which are used in the CLI help and version display. Defaults are '[app]', '0.0.0' and ''.
+ * which are used in the CLI help and version display. Defaults to the executing script name (without extension),
+ * '0.0.0', and ''.
  * @returns The app metadata.
  */
 export function getAppMetadata(): AppMetadata {
     const runtime = getRuntimeEnvironment();
+    const configFile = runtime === 'deno' ? 'deno.json' : 'package.json';
+    const configPath = path.join(process.cwd(), configFile);
+    const defaultName = getProgramName().replace(/\.(js|ts|mjs|cjs|mts|cts)$/, '');
 
-    if (runtime === 'deno') {
-        // In Deno, read from deno.json
-        try {
-            const denoPath = new URL('deno.json', import.meta.url);
-            const denoText = Deno.readTextFileSync(denoPath);
-            const denoConfig = JSON.parse(denoText) as {
-                name?: string;
-                version?: string;
-                description?: string;
-            };
-            return {
-                name: denoConfig.name ?? '[app]',
-                version: denoConfig.version ?? '0.0.0',
-                description: denoConfig.description ?? '',
-            };
-        } catch {
-            return {
-                name: '[app]',
-                version: '0.0.0',
-                description: '',
-            };
-        }
-    }
-
-    // In Node.js, read from package.json
     try {
-        const moduleDir = path.dirname(new URL(import.meta.url).pathname);
-        const pkgPath = path.join(moduleDir, '../package.json');
-        const pkgContent = readFileSync(pkgPath, 'utf-8');
-        const pkgConfig = JSON.parse(pkgContent) as {
+        const content = readFileSync(configPath, 'utf-8');
+        const config = JSON.parse(content) as {
             name?: string;
             version?: string;
             description?: string;
         };
         return {
-            name: pkgConfig.name ?? '[app]',
-            version: pkgConfig.version ?? '0.0.0',
-            description: pkgConfig.description ?? '',
+            name: config.name ?? defaultName,
+            version: config.version ?? '0.0.0',
+            description: config.description ?? '',
         };
     } catch {
         return {
-            name: '[app]',
+            name: defaultName,
             version: '0.0.0',
             description: '',
         };
