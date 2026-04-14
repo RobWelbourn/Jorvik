@@ -60,7 +60,7 @@ Deno.test('parsePositionalParams: returns failure for missing required param', (
     const result = parsePositionalParams(schema, ['in.txt']);
     assertEquals(result.success, false);
     if (!result.success) {
-        assert(result.error.includes('Missing required positional parameter'));
+        assert(result.error.includes('Missing required parameter'));
     }
 });
 
@@ -72,7 +72,7 @@ Deno.test('parsePositionalParams: returns failure when too many positionals are 
     const result = parsePositionalParams(schema, ['in.txt', 'extra']);
     assertEquals(result.success, false);
     if (!result.success) {
-        assertEquals(result.error, 'Too many positional parameters');
+        assertEquals(result.error, 'Too many parameters');
     }
 });
 
